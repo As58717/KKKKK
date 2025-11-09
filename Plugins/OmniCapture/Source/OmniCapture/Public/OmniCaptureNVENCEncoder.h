@@ -90,13 +90,13 @@ private:
 
 #if PLATFORM_WINDOWS
 #if OMNI_WITH_D3D11_RHI
-    friend bool EncodeFrameD3D11(FOmniCaptureNVENCEncoder& Encoder, const FOmniCaptureFrame& Frame);
+    bool EncodeFrameD3D11(const FOmniCaptureFrame& Frame);
 #endif
 #if OMNI_WITH_D3D12_RHI
-    friend bool EncodeFrameD3D12(FOmniCaptureNVENCEncoder& Encoder, const FOmniCaptureFrame& Frame);
+    bool EncodeFrameD3D12(const FOmniCaptureFrame& Frame);
 #endif
 #endif
-    friend bool EncodeFrameInternal(FOmniCaptureNVENCEncoder& Encoder, const FOmniCaptureFrame& Frame);
+    bool EncodeFrameInternal(const FOmniCaptureFrame& Frame);
 #endif
 };
 
