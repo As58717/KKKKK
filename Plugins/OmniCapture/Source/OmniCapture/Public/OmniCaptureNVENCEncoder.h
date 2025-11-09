@@ -4,6 +4,7 @@
 #include "OmniCaptureTypes.h"
 
 #include "NVENC/NVENCPlatform.h"
+#include "NVENC/NVENCDefs.h"
 
 #if PLATFORM_WINDOWS && WITH_OMNI_NVENC
     #define OMNI_WITH_NVENC 1
