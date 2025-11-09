@@ -8,8 +8,14 @@
 #include "NVENC/NVEncodeAPILoader.h"
 #include "NVENC/NVENCDefs.h"
 #include "NVENC/NVENCSession.h"
+#include "HAL/CriticalSection.h"
+#include "HAL/PlatformProcess.h"
 #include "Logging/LogMacros.h"
+#include "Misc/ScopeLock.h"
 #include "Misc/ScopeExit.h"
+
+#include <chrono>
+#include <future>
 
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -83,184 +89,355 @@ namespace OmniNVENC
     }
 #endif // PLATFORM_WINDOWS && OMNI_WITH_D3D12_RHI
 
-    bool FNVENCCaps::Query(ENVENCCodec Codec, FNVENCCapabilities& OutCapabilities)
+    namespace
     {
-        OutCapabilities = FNVENCCapabilities();
-
-        FNVEncodeAPILoader& Loader = FNVEncodeAPILoader::Get();
-        if (!Loader.Load())
+        struct FCachedCapabilitiesEntry
         {
-            UE_LOG(LogNVENCCaps, Warning, TEXT("NVENC capability query failed – loader was unable to resolve the runtime."));
-            return false;
+            bool bValid = false;
+            bool bSupported = false;
+            FNVENCCapabilities Capabilities;
+        };
+
+        struct FCapabilityProbeResult
+        {
+            TMap<ENVENCCodec, FCachedCapabilitiesEntry> Cache;
+            bool bSuccess = false;
+        };
+
+        TMap<ENVENCCodec, FCachedCapabilitiesEntry>& GetCapabilityCache()
+        {
+            static TMap<ENVENCCodec, FCachedCapabilitiesEntry> Cache;
+            return Cache;
         }
+
+        FCriticalSection& GetCapabilityCacheMutex()
+        {
+            static FCriticalSection Mutex;
+            return Mutex;
+        }
+
+        bool& GetCapabilityProbeAttempted()
+        {
+            static bool bAttempted = false;
+            return bAttempted;
+        }
+
+        bool& GetCapabilityProbeFinished()
+        {
+            static bool bFinished = false;
+            return bFinished;
+        }
+
+        bool& GetCapabilityProbeSucceeded()
+        {
+            static bool bSucceeded = false;
+            return bSucceeded;
+        }
+
+        bool QueryCapabilitiesInternal(ENVENCCodec Codec, FNVENCCapabilities& OutCapabilities)
+        {
+            OutCapabilities = FNVENCCapabilities();
+
+            FNVEncodeAPILoader& Loader = FNVEncodeAPILoader::Get();
+            if (!Loader.Load())
+            {
+                UE_LOG(LogNVENCCaps, Warning, TEXT("NVENC capability query failed – loader was unable to resolve the runtime."));
+                return false;
+            }
 
 #if !PLATFORM_WINDOWS
-        UE_LOG(LogNVENCCaps, Warning, TEXT("NVENC capability probing is only supported on Windows."));
-        return false;
+            UE_LOG(LogNVENCCaps, Warning, TEXT("NVENC capability probing is only supported on Windows."));
+            return false;
 #else
-        TRefCountPtr<ID3D11Device> Device;
-        TRefCountPtr<ID3D11DeviceContext> Context;
+            TRefCountPtr<ID3D11Device> Device;
+            TRefCountPtr<ID3D11DeviceContext> Context;
 
 #if OMNI_WITH_D3D11_RHI
-        {
-            const UINT DeviceFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-            const D3D_FEATURE_LEVEL FeatureLevels[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
-            D3D_FEATURE_LEVEL CreatedLevel = D3D_FEATURE_LEVEL_11_0;
-
-            HRESULT CreateDeviceResult = D3D11CreateDevice(
-                nullptr,
-                D3D_DRIVER_TYPE_HARDWARE,
-                nullptr,
-                DeviceFlags,
-                FeatureLevels,
-                UE_ARRAY_COUNT(FeatureLevels),
-                D3D11_SDK_VERSION,
-                Device.GetInitReference(),
-                &CreatedLevel,
-                Context.GetInitReference());
-
-            if (FAILED(CreateDeviceResult))
             {
-                UE_LOG(LogNVENCCaps, Verbose, TEXT("Temporary D3D11 device creation for NVENC caps failed (0x%08x)."), CreateDeviceResult);
-                Device = nullptr;
-                Context = nullptr;
+                const UINT DeviceFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+                const D3D_FEATURE_LEVEL FeatureLevels[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
+                D3D_FEATURE_LEVEL CreatedLevel = D3D_FEATURE_LEVEL_11_0;
+
+                HRESULT CreateDeviceResult = D3D11CreateDevice(
+                    nullptr,
+                    D3D_DRIVER_TYPE_HARDWARE,
+                    nullptr,
+                    DeviceFlags,
+                    FeatureLevels,
+                    UE_ARRAY_COUNT(FeatureLevels),
+                    D3D11_SDK_VERSION,
+                    Device.GetInitReference(),
+                    &CreatedLevel,
+                    Context.GetInitReference());
+
+                if (FAILED(CreateDeviceResult))
+                {
+                    UE_LOG(LogNVENCCaps, Verbose, TEXT("Temporary D3D11 device creation for NVENC caps failed (0x%08x)."), CreateDeviceResult);
+                    Device = nullptr;
+                    Context = nullptr;
+                }
             }
-        }
 #endif // OMNI_WITH_D3D11_RHI
 
 #if OMNI_WITH_D3D12_RHI
-        if (!Device.IsValid())
-        {
-            const D3D_FEATURE_LEVEL FeatureLevels[] =
+            if (!Device.IsValid())
             {
-                D3D_FEATURE_LEVEL_12_1,
-                D3D_FEATURE_LEVEL_12_0,
-                D3D_FEATURE_LEVEL_11_1,
-                D3D_FEATURE_LEVEL_11_0
-            };
+                const D3D_FEATURE_LEVEL FeatureLevels[] =
+                {
+                    D3D_FEATURE_LEVEL_12_1,
+                    D3D_FEATURE_LEVEL_12_0,
+                    D3D_FEATURE_LEVEL_11_1,
+                    D3D_FEATURE_LEVEL_11_0
+                };
 
-            TRefCountPtr<ID3D12Device> D3D12Device;
-            if (!CreateProbeD3D12Device(D3D12Device))
-            {
-                UE_LOG(LogNVENCCaps, Warning, TEXT("Unable to create D3D12 device for NVENC capability query."));
-                return false;
+                TRefCountPtr<ID3D12Device> D3D12Device;
+                if (!CreateProbeD3D12Device(D3D12Device))
+                {
+                    UE_LOG(LogNVENCCaps, Warning, TEXT("Unable to create D3D12 device for NVENC capability query."));
+                    return false;
+                }
+
+                D3D12_COMMAND_QUEUE_DESC QueueDesc = {};
+                QueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+                QueueDesc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
+                QueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+
+                TRefCountPtr<ID3D12CommandQueue> CommandQueue;
+                HRESULT QueueResult = D3D12Device->CreateCommandQueue(&QueueDesc, IID_PPV_ARGS(CommandQueue.GetInitReference()));
+                if (FAILED(QueueResult))
+                {
+                    UE_LOG(LogNVENCCaps, Warning, TEXT("Failed to create D3D12 command queue for NVENC capability query (0x%08x)."), QueueResult);
+                    return false;
+                }
+
+                ID3D12CommandQueue* CommandQueues[] = { CommandQueue.GetReference() };
+
+                HRESULT BridgeResult = D3D11On12CreateDevice(
+                    D3D12Device.GetReference(),
+                    D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                    FeatureLevels,
+                    UE_ARRAY_COUNT(FeatureLevels),
+                    reinterpret_cast<IUnknown**>(CommandQueues),
+                    UE_ARRAY_COUNT(CommandQueues),
+                    0,
+                    Device.GetInitReference(),
+                    Context.GetInitReference(),
+                    nullptr);
+
+                if (FAILED(BridgeResult))
+                {
+                    UE_LOG(LogNVENCCaps, Warning, TEXT("D3D11On12CreateDevice failed during NVENC capability query (0x%08x)."), BridgeResult);
+                    return false;
+                }
             }
-
-            D3D12_COMMAND_QUEUE_DESC QueueDesc = {};
-            QueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-            QueueDesc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
-            QueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-
-            TRefCountPtr<ID3D12CommandQueue> CommandQueue;
-            HRESULT QueueResult = D3D12Device->CreateCommandQueue(&QueueDesc, IID_PPV_ARGS(CommandQueue.GetInitReference()));
-            if (FAILED(QueueResult))
-            {
-                UE_LOG(LogNVENCCaps, Warning, TEXT("Failed to create D3D12 command queue for NVENC capability query (0x%08x)."), QueueResult);
-                return false;
-            }
-
-            ID3D12CommandQueue* CommandQueues[] = { CommandQueue.GetReference() };
-
-            HRESULT BridgeResult = D3D11On12CreateDevice(
-                D3D12Device.GetReference(),
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                FeatureLevels,
-                UE_ARRAY_COUNT(FeatureLevels),
-                reinterpret_cast<IUnknown**>(CommandQueues),
-                UE_ARRAY_COUNT(CommandQueues),
-                0,
-                Device.GetInitReference(),
-                Context.GetInitReference(),
-                nullptr);
-
-            if (FAILED(BridgeResult))
-            {
-                UE_LOG(LogNVENCCaps, Warning, TEXT("D3D11On12CreateDevice failed during NVENC capability query (0x%08x)."), BridgeResult);
-                return false;
-            }
-        }
 #endif // OMNI_WITH_D3D12_RHI
 
-        if (!Device.IsValid())
-        {
-            UE_LOG(LogNVENCCaps, Warning, TEXT("Unable to create a DirectX device for NVENC capability query."));
-            return false;
-        }
-
-        OmniNVENC::FNVENCSession Session;
-        if (!Session.Open(Codec, Device.GetReference(), NV_ENC_DEVICE_TYPE_DIRECTX))
-        {
-            UE_LOG(LogNVENCCaps, Warning, TEXT("NVENC capability query failed – unable to open session for %s."), *FNVENCDefs::CodecToString(Codec));
-            return false;
-        }
-
-        ON_SCOPE_EXIT
-        {
-            Session.Destroy();
-            if (Context.IsValid())
+            if (!Device.IsValid())
             {
-                Context->Flush();
+                UE_LOG(LogNVENCCaps, Warning, TEXT("Unable to create a DirectX device for NVENC capability query."));
+                return false;
             }
-        };
 
-        using TNvEncGetEncodeCaps = NVENCSTATUS(NVENCAPI*)(void*, GUID, NV_ENC_CAPS_PARAM*, int*);
-        TNvEncGetEncodeCaps GetEncodeCapsFn = Session.GetFunctionList().nvEncGetEncodeCaps;
-        if (!GetEncodeCapsFn)
-        {
-            UE_LOG(LogNVENCCaps, Warning, TEXT("NVENC runtime does not expose NvEncGetEncodeCaps."));
-            return false;
-        }
-
-        auto ToWindowsGuid = [](const FGuid& InGuid)
-        {
-            GUID Guid;
-            Guid.Data1 = static_cast<uint32>(InGuid.A);
-            Guid.Data2 = static_cast<uint16>((static_cast<uint32>(InGuid.B) >> 16) & 0xFFFF);
-            Guid.Data3 = static_cast<uint16>(static_cast<uint32>(InGuid.B) & 0xFFFF);
-
-            const uint32 C = static_cast<uint32>(InGuid.C);
-            const uint32 D = static_cast<uint32>(InGuid.D);
-
-            Guid.Data4[0] = static_cast<uint8>((C >> 24) & 0xFF);
-            Guid.Data4[1] = static_cast<uint8>((C >> 16) & 0xFF);
-            Guid.Data4[2] = static_cast<uint8>((C >> 8) & 0xFF);
-            Guid.Data4[3] = static_cast<uint8>(C & 0xFF);
-            Guid.Data4[4] = static_cast<uint8>((D >> 24) & 0xFF);
-            Guid.Data4[5] = static_cast<uint8>((D >> 16) & 0xFF);
-            Guid.Data4[6] = static_cast<uint8>((D >> 8) & 0xFF);
-            Guid.Data4[7] = static_cast<uint8>(D & 0xFF);
-            return Guid;
-        };
-
-        const GUID CodecGuid = ToWindowsGuid(FNVENCDefs::CodecGuid(Codec));
-
-        auto QueryCapability = [&](NV_ENC_CAPS Capability, int32 DefaultValue = 0) -> int32
-        {
-            NV_ENC_CAPS_PARAM CapsParam = {};
-            CapsParam.version = FNVENCDefs::PatchStructVersion(NV_ENC_CAPS_PARAM_VER, Session.GetApiVersion());
-            CapsParam.capsToQuery = Capability;
-
-            int CapsValue = DefaultValue;
-            NVENCSTATUS Status = GetEncodeCapsFn(Session.GetEncoderHandle(), CodecGuid, &CapsParam, &CapsValue);
-            if (Status != NV_ENC_SUCCESS)
+            OmniNVENC::FNVENCSession Session;
+            if (!Session.Open(Codec, Device.GetReference(), NV_ENC_DEVICE_TYPE_DIRECTX))
             {
-                UE_LOG(LogNVENCCaps, Verbose, TEXT("NvEncGetEncodeCaps(%d) returned %s"), static_cast<int32>(Capability), *FNVENCDefs::StatusToString(Status));
-                return DefaultValue;
+                UE_LOG(LogNVENCCaps, Warning, TEXT("NVENC capability query failed – unable to open session for %s."), *FNVENCDefs::CodecToString(Codec));
+                return false;
             }
-            return CapsValue;
-        };
 
-        OutCapabilities.bSupports10Bit = QueryCapability(NV_ENC_CAPS_SUPPORT_10BIT_ENCODE) != 0;
-        OutCapabilities.bSupportsBFrames = QueryCapability(NV_ENC_CAPS_NUM_MAX_BFRAMES) > 0;
-        OutCapabilities.bSupportsYUV444 = QueryCapability(NV_ENC_CAPS_SUPPORT_YUV444_ENCODE) != 0;
-        OutCapabilities.bSupportsLookahead = QueryCapability(NV_ENC_CAPS_SUPPORT_LOOKAHEAD) != 0;
-        OutCapabilities.bSupportsAdaptiveQuantization = QueryCapability(NV_ENC_CAPS_SUPPORT_TEMPORAL_AQ) != 0;
-        OutCapabilities.MaxWidth = QueryCapability(NV_ENC_CAPS_WIDTH_MAX);
-        OutCapabilities.MaxHeight = QueryCapability(NV_ENC_CAPS_HEIGHT_MAX);
+            ON_SCOPE_EXIT
+            {
+                Session.Destroy();
+                if (Context.IsValid())
+                {
+                    Context->Flush();
+                }
+            };
 
-        UE_LOG(LogNVENCCaps, Verbose, TEXT("Queried NVENC caps for %s: %s"), *FNVENCDefs::CodecToString(Codec), *FNVENCCaps::ToDebugString(OutCapabilities));
-        return true;
+            using TNvEncGetEncodeCaps = NVENCSTATUS(NVENCAPI*)(void*, GUID, NV_ENC_CAPS_PARAM*, int*);
+            TNvEncGetEncodeCaps GetEncodeCapsFn = Session.GetFunctionList().nvEncGetEncodeCaps;
+            if (!GetEncodeCapsFn)
+            {
+                UE_LOG(LogNVENCCaps, Warning, TEXT("NVENC runtime does not expose NvEncGetEncodeCaps."));
+                return false;
+            }
+
+            auto ToWindowsGuid = [](const FGuid& InGuid)
+            {
+                GUID Guid;
+                Guid.Data1 = static_cast<uint32>(InGuid.A);
+                Guid.Data2 = static_cast<uint16>((static_cast<uint32>(InGuid.B) >> 16) & 0xFFFF);
+                Guid.Data3 = static_cast<uint16>(static_cast<uint32>(InGuid.B) & 0xFFFF);
+
+                const uint32 C = static_cast<uint32>(InGuid.C);
+                const uint32 D = static_cast<uint32>(InGuid.D);
+
+                Guid.Data4[0] = static_cast<uint8>((C >> 24) & 0xFF);
+                Guid.Data4[1] = static_cast<uint8>((C >> 16) & 0xFF);
+                Guid.Data4[2] = static_cast<uint8>((C >> 8) & 0xFF);
+                Guid.Data4[3] = static_cast<uint8>(C & 0xFF);
+                Guid.Data4[4] = static_cast<uint8>((D >> 24) & 0xFF);
+                Guid.Data4[5] = static_cast<uint8>((D >> 16) & 0xFF);
+                Guid.Data4[6] = static_cast<uint8>((D >> 8) & 0xFF);
+                Guid.Data4[7] = static_cast<uint8>(D & 0xFF);
+                return Guid;
+            };
+
+            const GUID CodecGuid = ToWindowsGuid(FNVENCDefs::CodecGuid(Codec));
+
+            auto QueryCapability = [&](NV_ENC_CAPS Capability, int32 DefaultValue = 0) -> int32
+            {
+                NV_ENC_CAPS_PARAM CapsParam = {};
+                CapsParam.version = FNVENCDefs::PatchStructVersion(NV_ENC_CAPS_PARAM_VER, Session.GetApiVersion());
+                CapsParam.capsToQuery = Capability;
+
+                int CapsValue = DefaultValue;
+                NVENCSTATUS Status = GetEncodeCapsFn(Session.GetEncoderHandle(), CodecGuid, &CapsParam, &CapsValue);
+                if (Status != NV_ENC_SUCCESS)
+                {
+                    UE_LOG(LogNVENCCaps, Verbose, TEXT("NvEncGetEncodeCaps(%d) returned %s"), static_cast<int32>(Capability), *FNVENCDefs::StatusToString(Status));
+                    return DefaultValue;
+                }
+                return CapsValue;
+            };
+
+            OutCapabilities.bSupports10Bit = QueryCapability(NV_ENC_CAPS_SUPPORT_10BIT_ENCODE) != 0;
+            OutCapabilities.bSupportsBFrames = QueryCapability(NV_ENC_CAPS_NUM_MAX_BFRAMES) > 0;
+            OutCapabilities.bSupportsYUV444 = QueryCapability(NV_ENC_CAPS_SUPPORT_YUV444_ENCODE) != 0;
+            OutCapabilities.bSupportsLookahead = QueryCapability(NV_ENC_CAPS_SUPPORT_LOOKAHEAD) != 0;
+            OutCapabilities.bSupportsAdaptiveQuantization = QueryCapability(NV_ENC_CAPS_SUPPORT_TEMPORAL_AQ) != 0;
+            OutCapabilities.MaxWidth = QueryCapability(NV_ENC_CAPS_WIDTH_MAX);
+            OutCapabilities.MaxHeight = QueryCapability(NV_ENC_CAPS_HEIGHT_MAX);
+
+            UE_LOG(LogNVENCCaps, Verbose, TEXT("Queried NVENC caps for %s: %s"), *FNVENCDefs::CodecToString(Codec), *FNVENCCaps::ToDebugString(OutCapabilities));
+            return true;
 #endif
+        }
+
+        FCapabilityProbeResult RunCapabilityProbe()
+        {
+            FCapabilityProbeResult Result;
+
+            const ENVENCCodec CodecsToProbe[] = { ENVENCCodec::H264, ENVENCCodec::HEVC };
+            for (ENVENCCodec Codec : CodecsToProbe)
+            {
+                FCachedCapabilitiesEntry Entry;
+                Entry.bValid = true;
+                Entry.bSupported = QueryCapabilitiesInternal(Codec, Entry.Capabilities);
+                if (Entry.bSupported)
+                {
+                    Result.bSuccess = true;
+                }
+                Result.Cache.Add(Codec, Entry);
+            }
+
+            return Result;
+        }
+
+        void EnsureCapabilityCache()
+        {
+            bool bShouldProbe = false;
+            {
+                FScopeLock Lock(&GetCapabilityCacheMutex());
+                if (!GetCapabilityProbeAttempted())
+                {
+                    GetCapabilityProbeAttempted() = true;
+                    bShouldProbe = true;
+                }
+                else if (GetCapabilityProbeFinished())
+                {
+                    return;
+                }
+            }
+
+            if (!bShouldProbe)
+            {
+                for (;;)
+                {
+                    {
+                        FScopeLock Lock(&GetCapabilityCacheMutex());
+                        if (GetCapabilityProbeFinished())
+                        {
+                            return;
+                        }
+                    }
+
+                    FPlatformProcess::SleepNoStats(0.001f);
+                }
+            }
+
+            auto Future = std::async(std::launch::async, []() { return RunCapabilityProbe(); });
+            using namespace std::chrono_literals;
+            if (Future.wait_for(2500ms) != std::future_status::ready)
+            {
+                UE_LOG(LogNVENCCaps, Warning, TEXT("NVENC capability probe timed out after 2500ms."));
+                {
+                    FScopeLock Lock(&GetCapabilityCacheMutex());
+                    GetCapabilityProbeFinished() = true;
+                    GetCapabilityProbeSucceeded() = false;
+                }
+                return;
+            }
+
+            FCapabilityProbeResult Result = Future.get();
+            {
+                FScopeLock Lock(&GetCapabilityCacheMutex());
+                GetCapabilityCache() = MoveTemp(Result.Cache);
+                GetCapabilityProbeFinished() = true;
+                GetCapabilityProbeSucceeded() = Result.bSuccess;
+            }
+        }
+    }
+
+    bool FNVENCCaps::Query(ENVENCCodec Codec, FNVENCCapabilities& OutCapabilities)
+    {
+        EnsureCapabilityCache();
+
+        FScopeLock Lock(&GetCapabilityCacheMutex());
+        if (const FCachedCapabilitiesEntry* Entry = GetCapabilityCache().Find(Codec))
+        {
+            OutCapabilities = Entry->Capabilities;
+            return Entry->bValid && Entry->bSupported;
+        }
+
+        OutCapabilities = FNVENCCapabilities();
+        return false;
+    }
+
+    bool FNVENCCaps::IsCodecSupported(ENVENCCodec Codec)
+    {
+        EnsureCapabilityCache();
+
+        FScopeLock Lock(&GetCapabilityCacheMutex());
+        if (const FCachedCapabilitiesEntry* Entry = GetCapabilityCache().Find(Codec))
+        {
+            return Entry->bValid && Entry->bSupported;
+        }
+
+        return false;
+    }
+
+    const FNVENCCapabilities& FNVENCCaps::GetCachedCapabilities(ENVENCCodec Codec)
+    {
+        EnsureCapabilityCache();
+
+        FScopeLock Lock(&GetCapabilityCacheMutex());
+        if (const FCachedCapabilitiesEntry* Entry = GetCapabilityCache().Find(Codec))
+        {
+            return Entry->Capabilities;
+        }
+
+        static const FNVENCCapabilities EmptyCapabilities;
+        return EmptyCapabilities;
+    }
+
+    void FNVENCCaps::InvalidateCache()
+    {
+        FScopeLock Lock(&GetCapabilityCacheMutex());
+        GetCapabilityCache().Empty();
+        GetCapabilityProbeAttempted() = false;
+        GetCapabilityProbeFinished() = false;
+        GetCapabilityProbeSucceeded() = false;
     }
 
     FString FNVENCCaps::ToDebugString(const FNVENCCapabilities& Caps)
@@ -284,6 +461,21 @@ namespace OmniNVENC
     {
         OutCapabilities = FNVENCCapabilities();
         return false;
+    }
+
+    bool FNVENCCaps::IsCodecSupported(ENVENCCodec)
+    {
+        return false;
+    }
+
+    const FNVENCCapabilities& FNVENCCaps::GetCachedCapabilities(ENVENCCodec)
+    {
+        static const FNVENCCapabilities EmptyCapabilities;
+        return EmptyCapabilities;
+    }
+
+    void FNVENCCaps::InvalidateCache()
+    {
     }
 
     FString FNVENCCaps::ToDebugString(const FNVENCCapabilities& Caps)

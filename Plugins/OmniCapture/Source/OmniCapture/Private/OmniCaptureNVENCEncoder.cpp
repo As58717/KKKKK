@@ -61,6 +61,7 @@ namespace
         bool bSupportsNV12 = false;
         bool bSupportsP010 = false;
         bool bSupportsBGRA = false;
+        bool bSupports10Bit = false;
         FString DllFailureReason;
         FString ApiFailureReason;
         FString SessionFailureReason;
@@ -69,6 +70,7 @@ namespace
         FString P010FailureReason;
         FString BGRAFailureReason;
         FString HardwareFailureReason;
+        TMap<ENVENCCodec, FNVENCCapabilities> CodecCapabilities;
     };
 
     FCriticalSection& GetProbeCacheMutex()
@@ -482,6 +484,38 @@ namespace
         Result.bApisReady = true;
         UE_LOG(LogOmniCaptureNVENC, Display, TEXT("NVENC probe resolved exports successfully."));
 
+        Result.CodecCapabilities.Empty();
+        const ENVENCCodec CapabilityCodecs[] = { ENVENCCodec::H264, ENVENCCodec::HEVC };
+        for (ENVENCCodec Codec : CapabilityCodecs)
+        {
+            FNVENCCapabilities CodecCaps;
+            const bool bSupported = FNVENCCaps::Query(Codec, CodecCaps);
+            Result.CodecCapabilities.Add(Codec, CodecCaps);
+
+            if (bSupported)
+            {
+                UE_LOG(LogOmniCaptureNVENC, Display, TEXT("NVENC runtime capabilities for %s: %s"),
+                    *FNVENCDefs::CodecToString(Codec), *FNVENCCaps::ToDebugString(CodecCaps));
+                if (Codec == ENVENCCodec::HEVC)
+                {
+                    Result.bSupports10Bit = CodecCaps.bSupports10Bit;
+                }
+            }
+            else
+            {
+                UE_LOG(LogOmniCaptureNVENC, Verbose, TEXT("NVENC capability probe reported %s as unsupported."),
+                    *FNVENCDefs::CodecToString(Codec));
+                if (Codec == ENVENCCodec::HEVC && Result.CodecFailureReason.IsEmpty())
+                {
+                    Result.CodecFailureReason = TEXT("NVENC runtime reported HEVC as unavailable.");
+                }
+                if (Codec == ENVENCCodec::H264 && Result.SessionFailureReason.IsEmpty())
+                {
+                    Result.SessionFailureReason = TEXT("NVENC runtime reported H.264 as unavailable.");
+                }
+            }
+        }
+
         FString SessionFailure;
         if (!TryCreateProbeSession(ENVENCCodec::H264, ENVENCBufferFormat::NV12, SessionFailure))
         {
@@ -493,6 +527,7 @@ namespace
         Result.bSessionOpenable = true;
         Result.bSupportsH264 = true;
         Result.bSupportsNV12 = true;
+        Result.SessionFailureReason.Empty();
         UE_LOG(LogOmniCaptureNVENC, Display, TEXT("NVENC probe opened H.264/NV12 session successfully."));
 
         FString Nv12Failure;
@@ -511,6 +546,7 @@ namespace
         if (TryCreateProbeSession(ENVENCCodec::HEVC, ENVENCBufferFormat::NV12, HevcFailure))
         {
             Result.bSupportsHEVC = true;
+            Result.CodecFailureReason.Empty();
             UE_LOG(LogOmniCaptureNVENC, Display, TEXT("NVENC probe verified HEVC/NV12 support."));
         }
         else
@@ -531,11 +567,14 @@ namespace
             UE_LOG(LogOmniCaptureNVENC, Verbose, TEXT("NVENC probe P010 session failed: %s"), *Result.P010FailureReason);
         }
 
-        UE_LOG(LogOmniCaptureNVENC, Display, TEXT("NVENC probe completed. HEVC:%s NV12:%s P010:%s BGRA:%s"),
+        Result.bSupports10Bit = Result.bSupports10Bit && Result.bSupportsP010;
+
+        UE_LOG(LogOmniCaptureNVENC, Display, TEXT("NVENC probe completed. HEVC:%s NV12:%s P010:%s BGRA:%s 10bit:%s"),
             Result.bSupportsHEVC ? TEXT("yes") : TEXT("no"),
             Result.bSupportsNV12 ? TEXT("yes") : TEXT("no"),
             Result.bSupportsP010 ? TEXT("yes") : TEXT("no"),
-            Result.bSupportsBGRA ? TEXT("yes") : TEXT("no"));
+            Result.bSupportsBGRA ? TEXT("yes") : TEXT("no"),
+            Result.bSupports10Bit ? TEXT("yes") : TEXT("no"));
 
         return Result;
     }
@@ -583,7 +622,7 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
     Caps.bSupportsNV12 = Probe.bSupportsNV12 && SupportsEnginePixelFormat(EOmniCaptureColorFormat::NV12);
     Caps.bSupportsP010 = Probe.bSupportsP010 && SupportsEnginePixelFormat(EOmniCaptureColorFormat::P010);
     Caps.bSupportsBGRA = Probe.bSupportsBGRA && SupportsEnginePixelFormat(EOmniCaptureColorFormat::BGRA);
-    Caps.bSupports10Bit = Caps.bSupportsP010;
+    Caps.bSupports10Bit = Probe.bSupports10Bit && Caps.bSupportsP010;
     Caps.bHardwareAvailable = Caps.bDllPresent && Caps.bApisReady && Caps.bSessionOpenable;
     Caps.DllFailureReason = Probe.DllFailureReason;
     Caps.ApiFailureReason = Probe.ApiFailureReason;
@@ -593,6 +632,7 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
     Caps.P010FailureReason = Probe.P010FailureReason;
     Caps.BGRAFailureReason = Probe.BGRAFailureReason;
     Caps.HardwareFailureReason = Probe.HardwareFailureReason;
+    Caps.CodecCapabilities = Probe.CodecCapabilities;
 #else
     Caps.bHardwareAvailable = false;
     Caps.DllFailureReason = TEXT("NVENC is only available on Windows builds.");
@@ -686,6 +726,7 @@ void FOmniCaptureNVENCEncoder::InvalidateCachedCapabilities()
 #if PLATFORM_WINDOWS && OMNI_WITH_NVENC
     FScopeLock Lock(&GetProbeCacheMutex());
     GetProbeValidFlag() = false;
+    FNVENCCaps::InvalidateCache();
 #endif
 }
 

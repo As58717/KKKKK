@@ -25,6 +25,15 @@ namespace OmniNVENC
 
         /** Serialises the capability structure into a log friendly string. */
         static FString ToDebugString(const FNVENCCapabilities& Caps);
+
+        /** Returns true if the cached probe reported the codec as supported. */
+        static bool IsCodecSupported(ENVENCCodec Codec);
+
+        /** Returns the cached capabilities for the requested codec. */
+        static const FNVENCCapabilities& GetCachedCapabilities(ENVENCCodec Codec);
+
+        /** Clears all cached probe data forcing the next query to reprobe the runtime. */
+        static void InvalidateCache();
     };
 }
 

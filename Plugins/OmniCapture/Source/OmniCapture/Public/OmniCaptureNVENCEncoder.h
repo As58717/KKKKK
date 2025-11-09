@@ -32,6 +32,7 @@ struct FOmniNVENCCapabilities
     bool bSupportsHEVC = false;
     bool bSupports10Bit = false;
     bool bSupportsBGRA = false;
+    TMap<OmniNVENC::ENVENCCodec, OmniNVENC::FNVENCCapabilities> CodecCapabilities;
     FString DllFailureReason;
     FString ApiFailureReason;
     FString SessionFailureReason;
