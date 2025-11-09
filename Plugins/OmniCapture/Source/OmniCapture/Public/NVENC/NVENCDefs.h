@@ -59,6 +59,12 @@ namespace OmniNVENC
 
         /** Returns the default API version we expect when creating the function list. */
         static uint32 GetDefaultAPIVersion();
+
+        /**
+         * Takes a struct version constant generated with NVENCAPI_STRUCT_VERSION and rewrites the
+         * encoded API version so that it matches the runtime we negotiated with.
+         */
+        static uint32 PatchStructVersion(uint32 StructVersion, uint32 ApiVersion);
     };
 }
 

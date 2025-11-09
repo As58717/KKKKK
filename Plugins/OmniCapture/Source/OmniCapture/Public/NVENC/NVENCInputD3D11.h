@@ -49,6 +49,7 @@ namespace OmniNVENC
         TMap<ID3D11Texture2D*, FRegisteredResource> RegisteredResources;
         TMap<NV_ENC_INPUT_PTR, ID3D11Texture2D*> ActiveMappings;
         bool bIsInitialised = false;
+        uint32 ApiVersion = NVENCAPI_VERSION;
     };
 #else
     class FNVENCInputD3D11

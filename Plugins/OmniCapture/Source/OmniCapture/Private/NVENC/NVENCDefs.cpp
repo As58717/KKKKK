@@ -222,5 +222,12 @@ namespace OmniNVENC
         // We stick to a conservative default that matches the public SDK header.
         return 0x01010000u;
     }
+
+    uint32 FNVENCDefs::PatchStructVersion(uint32 StructVersion, uint32 ApiVersion)
+    {
+        const uint32 Flags = StructVersion & 0xF0000000u;
+        const uint32 StructId = (StructVersion >> 16) & 0x0FFFu;
+        return (ApiVersion & 0x0FFFFFFFu) | (StructId << 16) | Flags;
+    }
 }
 

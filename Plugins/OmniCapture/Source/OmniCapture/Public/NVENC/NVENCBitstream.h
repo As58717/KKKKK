@@ -27,7 +27,7 @@ namespace OmniNVENC
     class FNVENCBitstream
     {
     public:
-        bool Initialize(void* InEncoder, const NV_ENCODE_API_FUNCTION_LIST& InFunctions, uint32 InBufferSize = 0);
+        bool Initialize(void* InEncoder, const NV_ENCODE_API_FUNCTION_LIST& InFunctions, uint32 InApiVersion, uint32 InBufferSize = 0);
         void Release();
 
         bool IsValid() const { return OutputBuffer != nullptr; }
@@ -45,6 +45,7 @@ namespace OmniNVENC
         NV_ENC_OUTPUT_PTR OutputBuffer = nullptr;
         NV_ENC_LOCK_BITSTREAM LockedParams = {};
         bool bIsLocked = false;
+        uint32 ApiVersion = NVENCAPI_VERSION;
     };
 }
 
