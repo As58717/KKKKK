@@ -210,6 +210,7 @@ namespace OmniNVENC
         TNvEncGetEncodePresetConfig GetPresetConfig = FunctionList.nvEncGetEncodePresetConfig;
         TNvEncInitializeEncoder InitializeEncoder = FunctionList.nvEncInitializeEncoder;
         TNvEncGetEncodePresetGUIDs GetPresetGUIDs = reinterpret_cast<TNvEncGetEncodePresetGUIDs>(FunctionList.nvEncGetEncodePresetGUIDs);
+        NVENCSTATUS Status = NV_ENC_SUCCESS;
 
         if (!ValidateFunction("NvEncGetEncodePresetConfig", GetPresetConfig) || !ValidateFunction("NvEncInitializeEncoder", InitializeEncoder))
         {
