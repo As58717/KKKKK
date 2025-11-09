@@ -36,20 +36,31 @@ namespace OmniNVENC
         UE_LOG(LogNVENCInputD3D11, Warning, TEXT("NVENC D3D11 input bridge is only available on Windows."));
         return false;
 #else
-        if (bIsInitialised)
-        {
-            return true;
-        }
-
         if (!InDevice)
         {
             UE_LOG(LogNVENCInputD3D11, Error, TEXT("Cannot initialise NVENC D3D11 input without a valid device."));
             return false;
         }
 
+        Session = &InSession;
+        ApiVersion = InSession.GetApiVersion();
+
+        if (bIsInitialised)
+        {
+            if (Device != InDevice && InDevice)
+            {
+                InDevice->AddRef();
+                if (Device)
+                {
+                    Device->Release();
+                }
+                Device = InDevice;
+            }
+            return true;
+        }
+
         Device = InDevice;
         Device->AddRef();
-        Session = &InSession;
         bIsInitialised = true;
         return true;
 #endif
@@ -85,6 +96,7 @@ namespace OmniNVENC
             Device = nullptr;
         }
         Session = nullptr;
+        ApiVersion = NVENCAPI_VERSION;
         bIsInitialised = false;
 #endif
     }
@@ -115,7 +127,7 @@ namespace OmniNVENC
         }
 
         NV_ENC_REGISTER_RESOURCE RegisterParams = {};
-        RegisterParams.version = NV_ENC_REGISTER_RESOURCE_VER;
+        RegisterParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_REGISTER_RESOURCE_VER, ApiVersion);
         RegisterParams.resourceType = NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX;
         RegisterParams.resourceToRegister = InRHITexture;
         RegisterParams.width = Desc.Width;
@@ -210,7 +222,7 @@ namespace OmniNVENC
         }
 
         NV_ENC_MAP_INPUT_RESOURCE MapParams = {};
-        MapParams.version = NV_ENC_MAP_INPUT_RESOURCE_VER;
+        MapParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_MAP_INPUT_RESOURCE_VER, ApiVersion);
         MapParams.registeredResource = ResourceInfo->Handle;
 
         NVENCSTATUS Status = MapResourceFn(Session->GetEncoderHandle(), &MapParams);

@@ -99,6 +99,10 @@ namespace OmniNVENC
         {
             D3D11Bridge = new FNVENCInputD3D11();
         }
+        else if (Session && Session != &InSession)
+        {
+            D3D11Bridge->Shutdown();
+        }
 
         if (!D3D11Bridge->Initialise(D3D11Device.GetReference(), InSession))
         {

@@ -418,7 +418,7 @@ namespace
         }
 
         FNVENCBitstream Bitstream;
-        if (!Bitstream.Initialize(Session.GetEncoderHandle(), Session.GetFunctionList()))
+        if (!Bitstream.Initialize(Session.GetEncoderHandle(), Session.GetFunctionList(), Session.GetApiVersion()))
         {
             OutFailureReason = TEXT("Failed to allocate NVENC bitstream during probe.");
             Session.Destroy();
@@ -953,7 +953,7 @@ bool FOmniCaptureNVENCEncoder::EncodeFrameD3D11(const FOmniCaptureFrame& Frame)
             return false;
         }
 
-        if (!Bitstream.Initialize(EncoderSession.GetEncoderHandle(), EncoderSession.GetFunctionList()))
+        if (!Bitstream.Initialize(EncoderSession.GetEncoderHandle(), EncoderSession.GetFunctionList(), EncoderSession.GetApiVersion()))
         {
             LastErrorMessage = TEXT("Failed to create NVENC bitstream buffer.");
             UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
@@ -995,7 +995,7 @@ bool FOmniCaptureNVENCEncoder::EncodeFrameD3D11(const FOmniCaptureFrame& Frame)
     }
 
     NV_ENC_PIC_PARAMS PicParams = {};
-    PicParams.version = NV_ENC_PIC_PARAMS_VER;
+    PicParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_PIC_PARAMS_VER, EncoderSession.GetApiVersion());
     PicParams.pictureStruct = NV_ENC_PIC_STRUCT_FRAME;
     PicParams.inputBuffer = MappedInput;
     PicParams.bufferFmt = EncoderSession.GetNVBufferFormat();
@@ -1103,7 +1103,7 @@ bool FOmniCaptureNVENCEncoder::EncodeFrameD3D12(const FOmniCaptureFrame& Frame)
             return false;
         }
 
-        if (!Bitstream.Initialize(EncoderSession.GetEncoderHandle(), EncoderSession.GetFunctionList()))
+        if (!Bitstream.Initialize(EncoderSession.GetEncoderHandle(), EncoderSession.GetFunctionList(), EncoderSession.GetApiVersion()))
         {
             LastErrorMessage = TEXT("Failed to create NVENC bitstream buffer.");
             UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
@@ -1155,7 +1155,7 @@ bool FOmniCaptureNVENCEncoder::EncodeFrameD3D12(const FOmniCaptureFrame& Frame)
     }
 
     NV_ENC_PIC_PARAMS PicParams = {};
-    PicParams.version = NV_ENC_PIC_PARAMS_VER;
+    PicParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_PIC_PARAMS_VER, EncoderSession.GetApiVersion());
     PicParams.pictureStruct = NV_ENC_PIC_STRUCT_FRAME;
     PicParams.inputBuffer = MappedInput;
     PicParams.bufferFmt = EncoderSession.GetNVBufferFormat();

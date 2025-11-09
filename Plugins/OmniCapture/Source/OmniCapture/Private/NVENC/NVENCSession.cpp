@@ -9,6 +9,7 @@
 #include "NVENC/NVENCParameters.h"
 #include "NVENC/NVEncodeAPILoader.h"
 #include "Logging/LogMacros.h"
+#include "HAL/PlatformProcess.h"
 
 #include "Misc/ScopeExit.h"
 #include "Math/UnrealMathUtility.h"
@@ -142,6 +143,49 @@ namespace OmniNVENC
             return false;
         }
 
+        ApiVersion = NVENCAPI_VERSION;
+
+        using TNvEncodeAPIGetMaxSupportedVersion = NVENCSTATUS(NVENCAPI*)(uint32_t*);
+
+        void* const NvencHandle = FNVENCCommon::GetHandle();
+        if (NvencHandle)
+        {
+            void* const MaxVersionExport = FPlatformProcess::GetDllExport(NvencHandle, TEXT("NvEncodeAPIGetMaxSupportedVersion"));
+            if (MaxVersionExport)
+            {
+                TNvEncodeAPIGetMaxSupportedVersion GetMaxSupportedVersion = reinterpret_cast<TNvEncodeAPIGetMaxSupportedVersion>(MaxVersionExport);
+                uint32 RuntimeApiVersion = 0;
+                const NVENCSTATUS VersionStatus = GetMaxSupportedVersion ? GetMaxSupportedVersion(&RuntimeApiVersion) : NV_ENC_ERR_INVALID_PTR;
+                if (VersionStatus == NV_ENC_SUCCESS && RuntimeApiVersion != 0)
+                {
+                    if (RuntimeApiVersion < ApiVersion)
+                    {
+                        UE_LOG(LogNVENCSession, Log, TEXT("NVENC runtime API version 0x%08x is lower than compile-time version 0x%08x. Downgrading."), RuntimeApiVersion, ApiVersion);
+                        ApiVersion = RuntimeApiVersion;
+                    }
+                    else if (RuntimeApiVersion > ApiVersion)
+                    {
+                        UE_LOG(LogNVENCSession, Verbose, TEXT("NVENC runtime reports newer API version 0x%08x; using compile-time version 0x%08x."), RuntimeApiVersion, ApiVersion);
+                    }
+                }
+                else if (VersionStatus != NV_ENC_SUCCESS)
+                {
+                    UE_LOG(LogNVENCSession, Verbose, TEXT("NvEncodeAPIGetMaxSupportedVersion failed: %s"), *FNVENCDefs::StatusToString(VersionStatus));
+                }
+            }
+            else
+            {
+                UE_LOG(LogNVENCSession, Verbose, TEXT("NVENC runtime does not export NvEncodeAPIGetMaxSupportedVersion."));
+            }
+        }
+
+        const uint32 MinimumSupportedVersion = FNVENCDefs::GetDefaultAPIVersion();
+        if (ApiVersion < MinimumSupportedVersion)
+        {
+            UE_LOG(LogNVENCSession, Error, TEXT("NVENC runtime API version 0x%08x is below the minimum supported version 0x%08x."), ApiVersion, MinimumSupportedVersion);
+            return false;
+        }
+
         using TNvEncodeAPICreateInstance = NVENCSTATUS(NVENCAPI*)(NV_ENCODE_API_FUNCTION_LIST*);
 
         TNvEncodeAPICreateInstance CreateInstance = reinterpret_cast<TNvEncodeAPICreateInstance>(Loader.GetFunctions().NvEncodeAPICreateInstance);
@@ -152,7 +196,7 @@ namespace OmniNVENC
         }
 
         FMemory::Memzero(FunctionList);
-        FunctionList.version = NV_ENCODE_API_FUNCTION_LIST_VER;
+        FunctionList.version = FNVENCDefs::PatchStructVersion(NV_ENCODE_API_FUNCTION_LIST_VER, ApiVersion);
 
         NVENCSTATUS Status = CreateInstance(&FunctionList);
         if (Status != NV_ENC_SUCCESS)
@@ -170,8 +214,8 @@ namespace OmniNVENC
         }
 
         NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS OpenParams = {};
-        OpenParams.version = NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER;
-        OpenParams.apiVersion = NVENCAPI_VERSION;
+        OpenParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER, ApiVersion);
+        OpenParams.apiVersion = ApiVersion;
         OpenParams.device = InDevice;
         OpenParams.deviceType = InDeviceType;
 
@@ -286,8 +330,8 @@ namespace OmniNVENC
         for (int32 CandidateIndex = 0; CandidateIndex < PresetCandidates.Num(); ++CandidateIndex)
         {
             NV_ENC_PRESET_CONFIG AttemptConfig = {};
-            AttemptConfig.version = NV_ENC_PRESET_CONFIG_VER;
-            AttemptConfig.presetCfg.version = NV_ENC_CONFIG_VER;
+            AttemptConfig.version = FNVENCDefs::PatchStructVersion(NV_ENC_PRESET_CONFIG_VER, ApiVersion);
+            AttemptConfig.presetCfg.version = FNVENCDefs::PatchStructVersion(NV_ENC_CONFIG_VER, ApiVersion);
 
             LastPresetStatus = GetPresetConfig(Encoder, CodecGuid, PresetCandidates[CandidateIndex].Guid, &AttemptConfig);
 
@@ -325,6 +369,7 @@ namespace OmniNVENC
         }
 
         EncodeConfig = PresetConfig.presetCfg;
+        EncodeConfig.version = FNVENCDefs::PatchStructVersion(NV_ENC_CONFIG_VER, ApiVersion);
         EncodeConfig.rcParams.rateControlMode = ToNVRateControl(Parameters.RateControlMode);
         EncodeConfig.rcParams.averageBitRate = Parameters.TargetBitrate;
         EncodeConfig.rcParams.maxBitRate = Parameters.MaxBitrate;
@@ -355,7 +400,7 @@ namespace OmniNVENC
         NvBufferFormat = ToNVFormat(Parameters.BufferFormat);
 
         InitializeParams = {};
-        InitializeParams.version = NV_ENC_INITIALIZE_PARAMS_VER;
+        InitializeParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_INITIALIZE_PARAMS_VER, ApiVersion);
         InitializeParams.encodeGUID = CodecGuid;
         InitializeParams.presetGUID = SelectedPreset.Guid;
         InitializeParams.tuningInfo = SelectedPreset.Tuning;
@@ -416,8 +461,9 @@ namespace OmniNVENC
         NewConfig.gopLength = Parameters.GOPLength == 0 ? NVENC_INFINITE_GOPLENGTH : Parameters.GOPLength;
 
         NV_ENC_RECONFIGURE_PARAMS ReconfigureParams = {};
-        ReconfigureParams.version = NV_ENC_RECONFIGURE_PARAMS_VER;
+        ReconfigureParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_RECONFIGURE_PARAMS_VER, ApiVersion);
         ReconfigureParams.reInitEncodeParams = InitializeParams;
+        ReconfigureParams.reInitEncodeParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_INITIALIZE_PARAMS_VER, ApiVersion);
         ReconfigureParams.reInitEncodeParams.encodeWidth = Parameters.Width;
         ReconfigureParams.reInitEncodeParams.encodeHeight = Parameters.Height;
         ReconfigureParams.reInitEncodeParams.darWidth = Parameters.Width;
@@ -493,6 +539,7 @@ namespace OmniNVENC
         FunctionList = {};
 #endif
         CurrentParameters = FNVENCParameters();
+        ApiVersion = NVENCAPI_VERSION;
     }
 
     bool FNVENCSession::GetSequenceParams(TArray<uint8>& OutData)
@@ -518,7 +565,7 @@ namespace OmniNVENC
         Buffer.SetNumZeroed(1024);
 
         NV_ENC_SEQUENCE_PARAM_PAYLOAD Payload = {};
-        Payload.version = NV_ENC_SEQUENCE_PARAM_PAYLOAD_VER;
+        Payload.version = FNVENCDefs::PatchStructVersion(NV_ENC_SEQUENCE_PARAM_PAYLOAD_VER, ApiVersion);
         Payload.inBufferSize = Buffer.Num();
         Payload.spsppsBuffer = Buffer.GetData();
         Payload.outSPSPPSPayloadSize = &OutputSize;
