@@ -27,7 +27,7 @@ namespace OmniNVENC
 #endif
     }
 
-    bool FNVENCBitstream::Initialize(void* InEncoder, const NV_ENCODE_API_FUNCTION_LIST& InFunctions, uint32 InBufferSize)
+    bool FNVENCBitstream::Initialize(void* InEncoder, const NV_ENCODE_API_FUNCTION_LIST& InFunctions, uint32 InApiVersion, uint32 InBufferSize)
     {
 #if !PLATFORM_WINDOWS
         UE_LOG(LogNVENCBitstream, Warning, TEXT("NVENC bitstream buffers are only available on Windows builds."));
@@ -35,6 +35,7 @@ namespace OmniNVENC
 #else
         Release();
 
+        ApiVersion = InApiVersion;
         Encoder = InEncoder;
         Functions = &InFunctions;
 
@@ -52,7 +53,7 @@ namespace OmniNVENC
         }
 
         NV_ENC_CREATE_BITSTREAM_BUFFER CreateParams = {};
-        CreateParams.version = NV_ENC_CREATE_BITSTREAM_BUFFER_VER;
+        CreateParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_CREATE_BITSTREAM_BUFFER_VER, ApiVersion);
         CreateParams.memoryHeap = NV_ENC_MEMORY_HEAP_AUTOSELECT;
         CreateParams.size = InBufferSize;
 
@@ -92,6 +93,7 @@ namespace OmniNVENC
         Encoder = nullptr;
         bIsLocked = false;
         LockedParams = {};
+        ApiVersion = NVENCAPI_VERSION;
     }
 
     bool FNVENCBitstream::Lock(void*& OutBitstreamBuffer, int32& OutSizeInBytes)
@@ -127,7 +129,7 @@ namespace OmniNVENC
         }
 
         LockedParams = {};
-        LockedParams.version = NV_ENC_LOCK_BITSTREAM_VER;
+        LockedParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_LOCK_BITSTREAM_VER, ApiVersion);
         LockedParams.outputBitstream = OutputBuffer;
         LockedParams.doNotWait = 0;
 

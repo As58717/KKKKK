@@ -237,7 +237,7 @@ namespace OmniNVENC
         auto QueryCapability = [&](NV_ENC_CAPS Capability, int32 DefaultValue = 0) -> int32
         {
             NV_ENC_CAPS_PARAM CapsParam = {};
-            CapsParam.version = NV_ENC_CAPS_PARAM_VER;
+            CapsParam.version = FNVENCDefs::PatchStructVersion(NV_ENC_CAPS_PARAM_VER, Session.GetApiVersion());
             CapsParam.capsToQuery = Capability;
 
             int CapsValue = DefaultValue;
