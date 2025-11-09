@@ -2,6 +2,7 @@
 
 #include "NVENC/NVENCCommon.h"
 
+#include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "Logging/LogMacros.h"
 #include "Misc/Paths.h"
@@ -120,6 +121,19 @@ namespace OmniNVENC
             FPaths::NormalizeDirectoryName(Directory);
             return FPaths::Combine(Directory, Candidate);
         }
+
+#if PLATFORM_WINDOWS
+        const FString SystemRoot = FPlatformMisc::GetEnvironmentVariable(TEXT("SystemRoot"));
+        if (!SystemRoot.IsEmpty())
+        {
+            const FString SystemDirectory = FPaths::Combine(SystemRoot, TEXT("System32"));
+            const FString SystemDllPath = FPaths::Combine(SystemDirectory, Candidate);
+            if (FPaths::FileExists(SystemDllPath))
+            {
+                return SystemDllPath;
+            }
+        }
+#endif
 
         return Candidate;
     }
