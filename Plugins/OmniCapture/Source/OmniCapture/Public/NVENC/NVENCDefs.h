@@ -33,6 +33,12 @@ namespace OmniNVENC
         int32 MaxHeight = 0;
     };
 
+    struct FNVENCAPIVersion
+    {
+        uint32 Major = 0;
+        uint32 Minor = 0;
+    };
+
     /** Handy helpers that keep commonly used constants and conversions together. */
     class FNVENCDefs
     {
@@ -57,8 +63,26 @@ namespace OmniNVENC
         /** Converts well known NVENC status codes into log friendly text. */
         static FString StatusToString(int32 StatusCode);
 
-        /** Returns the default API version we expect when creating the function list. */
-        static uint32 GetDefaultAPIVersion();
+        /** Returns the minimum API version supported by this trimmed build. */
+        static FNVENCAPIVersion GetMinimumAPIVersion();
+
+        /** Builds an encoded API version suitable for NVENC structures. */
+        static uint32 EncodeApiVersion(const FNVENCAPIVersion& Version);
+
+        /** Decodes an encoded NVENC API version into discrete components. */
+        static FNVENCAPIVersion DecodeApiVersion(uint32 EncodedVersion);
+
+        /**
+         * Converts the version integer returned by NvEncodeAPIGetMaxSupportedVersion
+         * into discrete components.
+         */
+        static FNVENCAPIVersion DecodeRuntimeVersion(uint32 RuntimeVersion);
+
+        /** Human friendly string representation of an NVENC API version. */
+        static FString VersionToString(const FNVENCAPIVersion& Version);
+
+        /** True when Lhs represents an older API version than Rhs. */
+        static bool IsVersionOlder(const FNVENCAPIVersion& Lhs, const FNVENCAPIVersion& Rhs);
 
         /**
          * Takes a struct version constant generated with NVENCAPI_STRUCT_VERSION and rewrites the

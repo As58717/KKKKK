@@ -217,10 +217,47 @@ namespace OmniNVENC
         }
     }
 
-    uint32 FNVENCDefs::GetDefaultAPIVersion()
+    FNVENCAPIVersion FNVENCDefs::GetMinimumAPIVersion()
     {
-        // We stick to a conservative default that matches the public SDK header.
-        return 0x01010000u;
+        FNVENCAPIVersion Version;
+        Version.Major = 1u;
+        Version.Minor = 0u;
+        return Version;
+    }
+
+    uint32 FNVENCDefs::EncodeApiVersion(const FNVENCAPIVersion& Version)
+    {
+        return (Version.Major & 0xFFu) | ((Version.Minor & 0xFFu) << 24);
+    }
+
+    FNVENCAPIVersion FNVENCDefs::DecodeApiVersion(uint32 EncodedVersion)
+    {
+        FNVENCAPIVersion Version;
+        Version.Major = EncodedVersion & 0xFFu;
+        Version.Minor = (EncodedVersion >> 24) & 0xFFu;
+        return Version;
+    }
+
+    FNVENCAPIVersion FNVENCDefs::DecodeRuntimeVersion(uint32 RuntimeVersion)
+    {
+        FNVENCAPIVersion Version;
+        Version.Major = (RuntimeVersion >> 4) & 0x0FFFu;
+        Version.Minor = RuntimeVersion & 0x0Fu;
+        return Version;
+    }
+
+    FString FNVENCDefs::VersionToString(const FNVENCAPIVersion& Version)
+    {
+        return FString::Printf(TEXT("%u.%u"), Version.Major, Version.Minor);
+    }
+
+    bool FNVENCDefs::IsVersionOlder(const FNVENCAPIVersion& Lhs, const FNVENCAPIVersion& Rhs)
+    {
+        if (Lhs.Major != Rhs.Major)
+        {
+            return Lhs.Major < Rhs.Major;
+        }
+        return Lhs.Minor < Rhs.Minor;
     }
 
     uint32 FNVENCDefs::PatchStructVersion(uint32 StructVersion, uint32 ApiVersion)
