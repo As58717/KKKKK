@@ -204,10 +204,12 @@ namespace OmniNVENC
         }
 
         using TNvEncGetEncodePresetConfig = NVENCSTATUS(NVENCAPI*)(void*, GUID, GUID, NV_ENC_PRESET_CONFIG*);
+        using TNvEncGetEncodePresetConfigEx = NVENCSTATUS(NVENCAPI*)(void*, GUID, GUID, NV_ENC_TUNING_INFO, NV_ENC_PRESET_CONFIG*);
         using TNvEncInitializeEncoder = NVENCSTATUS(NVENCAPI*)(void*, NV_ENC_INITIALIZE_PARAMS*);
         using TNvEncGetEncodePresetGUIDs = NVENCSTATUS(NVENCAPI*)(void*, GUID, GUID*, uint32, uint32*);
 
         TNvEncGetEncodePresetConfig GetPresetConfig = FunctionList.nvEncGetEncodePresetConfig;
+        TNvEncGetEncodePresetConfigEx GetPresetConfigEx = reinterpret_cast<TNvEncGetEncodePresetConfigEx>(FunctionList.nvEncGetEncodePresetConfigEx);
         TNvEncInitializeEncoder InitializeEncoder = FunctionList.nvEncInitializeEncoder;
         TNvEncGetEncodePresetGUIDs GetPresetGUIDs = reinterpret_cast<TNvEncGetEncodePresetGUIDs>(FunctionList.nvEncGetEncodePresetGUIDs);
         NVENCSTATUS Status = NV_ENC_SUCCESS;
@@ -288,6 +290,11 @@ namespace OmniNVENC
             AttemptConfig.presetCfg.version = NV_ENC_CONFIG_VER;
 
             LastPresetStatus = GetPresetConfig(Encoder, CodecGuid, PresetCandidates[CandidateIndex].Guid, &AttemptConfig);
+
+            if (LastPresetStatus != NV_ENC_SUCCESS && GetPresetConfigEx)
+            {
+                LastPresetStatus = GetPresetConfigEx(Encoder, CodecGuid, PresetCandidates[CandidateIndex].Guid, PresetCandidates[CandidateIndex].Tuning, &AttemptConfig);
+            }
             if (LastPresetStatus == NV_ENC_SUCCESS)
             {
                 PresetConfig = AttemptConfig;
