@@ -87,6 +87,16 @@ private:
     bool bAnnexBHeaderWritten = false;
 
     bool WriteAnnexBHeader();
+
+#if PLATFORM_WINDOWS
+#if OMNI_WITH_D3D11_RHI
+    friend bool EncodeFrameD3D11(FOmniCaptureNVENCEncoder& Encoder, const FOmniCaptureFrame& Frame);
+#endif
+#if OMNI_WITH_D3D12_RHI
+    friend bool EncodeFrameD3D12(FOmniCaptureNVENCEncoder& Encoder, const FOmniCaptureFrame& Frame);
+#endif
+#endif
+    friend bool EncodeFrameInternal(FOmniCaptureNVENCEncoder& Encoder, const FOmniCaptureFrame& Frame);
 #endif
 };
 
