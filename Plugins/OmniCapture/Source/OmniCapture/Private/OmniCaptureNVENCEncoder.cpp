@@ -30,10 +30,10 @@ DEFINE_LOG_CATEGORY_STATIC(LogOmniCaptureNVENC, Log, All);
 #include "RHICommandList.h"
 #include "RHIResources.h"
 #if PLATFORM_WINDOWS
-#if WITH_D3D11_RHI
+#if OMNI_WITH_D3D11_RHI
 #include "D3D11RHI.h"
 #endif
-#if WITH_D3D12_RHI
+#if OMNI_WITH_D3D12_RHI
 #include "D3D12RHI.h"
 #endif
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -259,7 +259,7 @@ namespace
         }
     }
 
-#if PLATFORM_WINDOWS && WITH_D3D12_RHI
+#if PLATFORM_WINDOWS && OMNI_WITH_D3D12_RHI
     bool CreateProbeD3D12Device(TRefCountPtr<ID3D12Device>& OutDevice, FString& OutFailureReason)
     {
         TRefCountPtr<IDXGIFactory1> DxgiFactory;
@@ -311,7 +311,7 @@ namespace
 
         return true;
     }
-#endif // PLATFORM_WINDOWS && WITH_D3D12_RHI
+#endif // PLATFORM_WINDOWS && OMNI_WITH_D3D12_RHI
 
     bool TryCreateProbeSession(ENVENCCodec Codec, ENVENCBufferFormat Format, FString& OutFailureReason)
     {
@@ -320,12 +320,12 @@ namespace
         return false;
 #else
 
-#if WITH_D3D11_RHI || WITH_D3D12_RHI
+#if OMNI_WITH_D3D11_RHI || OMNI_WITH_D3D12_RHI
         ID3D11Device* Device = nullptr;
         TRefCountPtr<ID3D11Device> LocalDevice;
         TRefCountPtr<ID3D11DeviceContext> LocalContext;
 
-#if WITH_D3D11_RHI
+#if OMNI_WITH_D3D11_RHI
         const uint32 Flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
         const D3D_FEATURE_LEVEL FeatureLevels[] =
         {
@@ -340,7 +340,7 @@ namespace
             OutFailureReason = FString::Printf(TEXT("Failed to create probing D3D11 device (0x%08x)."), Hr);
             return false;
         }
-#elif WITH_D3D12_RHI
+#elif OMNI_WITH_D3D12_RHI
         const D3D_FEATURE_LEVEL FeatureLevels[] =
         {
             D3D_FEATURE_LEVEL_12_1,
@@ -387,7 +387,7 @@ namespace
             OutFailureReason = FString::Printf(TEXT("D3D11On12CreateDevice failed during NVENC probe (0x%08x)."), Hr);
             return false;
         }
-#endif // WITH_D3D11_RHI
+#endif // OMNI_WITH_D3D11_RHI
 
         Device = LocalDevice.GetReference();
 
@@ -430,7 +430,7 @@ namespace
 #else
         OutFailureReason = TEXT("D3D11 or D3D12 support is required for NVENC probing in this build.");
         return false;
-#endif // WITH_D3D11_RHI || WITH_D3D12_RHI
+#endif // OMNI_WITH_D3D11_RHI || OMNI_WITH_D3D12_RHI
 
 #endif // PLATFORM_WINDOWS
     }
@@ -643,13 +643,13 @@ bool FOmniCaptureNVENCEncoder::SupportsZeroCopyRHI()
     }
 
     const ERHIInterfaceType InterfaceType = GDynamicRHI->GetInterfaceType();
-#if WITH_D3D11_RHI
+#if OMNI_WITH_D3D11_RHI
     if (InterfaceType == ERHIInterfaceType::D3D11)
     {
         return true;
     }
 #endif
-#if WITH_D3D12_RHI
+#if OMNI_WITH_D3D12_RHI
     if (InterfaceType == ERHIInterfaceType::D3D12)
     {
         return true;
@@ -815,14 +815,14 @@ namespace
         return Texture.IsValid() ? static_cast<ID3D11Texture2D*>(Texture->GetNativeResource()) : nullptr;
     }
 
-#if WITH_D3D12_RHI
+#if OMNI_WITH_D3D12_RHI
     ID3D12Resource* GetD3D12ResourceFromRHI(const FTextureRHIRef& Texture)
     {
         return Texture.IsValid() ? static_cast<ID3D12Resource*>(Texture->GetNativeResource()) : nullptr;
     }
 #endif
 
-#if WITH_D3D11_RHI
+#if OMNI_WITH_D3D11_RHI
     bool EncodeFrameD3D11(FOmniCaptureNVENCEncoder& Encoder, const FOmniCaptureFrame& Frame)
     {
         ID3D11Texture2D* Texture = GetD3D11TextureFromRHI(Frame.Texture);
@@ -955,7 +955,7 @@ namespace
     }
 #endif
 
-#if WITH_D3D12_RHI
+#if OMNI_WITH_D3D12_RHI
     bool EncodeFrameD3D12(FOmniCaptureNVENCEncoder& Encoder, const FOmniCaptureFrame& Frame)
     {
         ID3D12Resource* Resource = GetD3D12ResourceFromRHI(Frame.Texture);
@@ -1124,14 +1124,14 @@ namespace
 
         const ERHIInterfaceType InterfaceType = GDynamicRHI->GetInterfaceType();
 
-#if WITH_D3D11_RHI
+#if OMNI_WITH_D3D11_RHI
         if (InterfaceType == ERHIInterfaceType::D3D11)
         {
             return EncodeFrameD3D11(Encoder, Frame);
         }
 #endif
 
-#if WITH_D3D12_RHI
+#if OMNI_WITH_D3D12_RHI
         if (InterfaceType == ERHIInterfaceType::D3D12)
         {
             return EncodeFrameD3D12(Encoder, Frame);

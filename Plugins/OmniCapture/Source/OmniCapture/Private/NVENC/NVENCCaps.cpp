@@ -4,6 +4,7 @@
 
 #if WITH_OMNI_NVENC
 
+#include "NVENC/NVENCPlatform.h"
 #include "NVENC/NVEncodeAPILoader.h"
 #include "NVENC/NVENCDefs.h"
 #include "NVENC/NVENCSession.h"
@@ -13,7 +14,7 @@
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <d3d11.h>
-#if WITH_D3D12_RHI
+#if OMNI_WITH_D3D12_RHI
 #include <d3d11on12.h>
 #include <d3d12.h>
 #include <dxgi.h>
@@ -25,7 +26,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogNVENCCaps, Log, All);
 
 namespace OmniNVENC
 {
-#if PLATFORM_WINDOWS && WITH_D3D12_RHI
+#if PLATFORM_WINDOWS && OMNI_WITH_D3D12_RHI
     namespace
     {
         bool CreateProbeD3D12Device(TRefCountPtr<ID3D12Device>& OutDevice)
@@ -80,7 +81,7 @@ namespace OmniNVENC
             return true;
         }
     }
-#endif // PLATFORM_WINDOWS && WITH_D3D12_RHI
+#endif // PLATFORM_WINDOWS && OMNI_WITH_D3D12_RHI
 
     bool FNVENCCaps::Query(ENVENCCodec Codec, FNVENCCapabilities& OutCapabilities)
     {
@@ -100,7 +101,7 @@ namespace OmniNVENC
         TRefCountPtr<ID3D11Device> Device;
         TRefCountPtr<ID3D11DeviceContext> Context;
 
-#if WITH_D3D11_RHI
+#if OMNI_WITH_D3D11_RHI
         {
             const UINT DeviceFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
             const D3D_FEATURE_LEVEL FeatureLevels[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
@@ -125,9 +126,9 @@ namespace OmniNVENC
                 Context = nullptr;
             }
         }
-#endif // WITH_D3D11_RHI
+#endif // OMNI_WITH_D3D11_RHI
 
-#if WITH_D3D12_RHI
+#if OMNI_WITH_D3D12_RHI
         if (!Device.IsValid())
         {
             const D3D_FEATURE_LEVEL FeatureLevels[] =
@@ -178,7 +179,7 @@ namespace OmniNVENC
                 return false;
             }
         }
-#endif // WITH_D3D12_RHI
+#endif // OMNI_WITH_D3D12_RHI
 
         if (!Device.IsValid())
         {
