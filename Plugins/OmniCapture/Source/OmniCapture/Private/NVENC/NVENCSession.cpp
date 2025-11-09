@@ -49,6 +49,20 @@ namespace OmniNVENC
             return Guid;
         }
 
+        FGuid FromWindowsGuid(const GUID& InGuid)
+        {
+            const uint32 B = (static_cast<uint32>(InGuid.Data2) << 16) | static_cast<uint32>(InGuid.Data3);
+            const uint32 C = (static_cast<uint32>(InGuid.Data4[0]) << 24)
+                | (static_cast<uint32>(InGuid.Data4[1]) << 16)
+                | (static_cast<uint32>(InGuid.Data4[2]) << 8)
+                | static_cast<uint32>(InGuid.Data4[3]);
+            const uint32 D = (static_cast<uint32>(InGuid.Data4[4]) << 24)
+                | (static_cast<uint32>(InGuid.Data4[5]) << 16)
+                | (static_cast<uint32>(InGuid.Data4[6]) << 8)
+                | static_cast<uint32>(InGuid.Data4[7]);
+            return FGuid(InGuid.Data1, B, C, D);
+        }
+
         NV_ENC_BUFFER_FORMAT ToNVFormat(ENVENCBufferFormat Format)
         {
             switch (Format)
@@ -191,9 +205,11 @@ namespace OmniNVENC
 
         using TNvEncGetEncodePresetConfig = NVENCSTATUS(NVENCAPI*)(void*, GUID, GUID, NV_ENC_PRESET_CONFIG*);
         using TNvEncInitializeEncoder = NVENCSTATUS(NVENCAPI*)(void*, NV_ENC_INITIALIZE_PARAMS*);
+        using TNvEncGetEncodePresetGUIDs = NVENCSTATUS(NVENCAPI*)(void*, GUID, GUID*, uint32, uint32*);
 
         TNvEncGetEncodePresetConfig GetPresetConfig = FunctionList.nvEncGetEncodePresetConfig;
         TNvEncInitializeEncoder InitializeEncoder = FunctionList.nvEncInitializeEncoder;
+        TNvEncGetEncodePresetGUIDs GetPresetGUIDs = reinterpret_cast<TNvEncGetEncodePresetGUIDs>(FunctionList.nvEncGetEncodePresetGUIDs);
 
         if (!ValidateFunction("NvEncGetEncodePresetConfig", GetPresetConfig) || !ValidateFunction("NvEncInitializeEncoder", InitializeEncoder))
         {
@@ -201,34 +217,103 @@ namespace OmniNVENC
         }
 
         GUID CodecGuid = ToWindowsGuid(FNVENCDefs::CodecGuid(Parameters.Codec));
-        GUID PresetGuid = ToWindowsGuid(FNVENCDefs::PresetLowLatencyGuid());
-        GUID FallbackPresetGuid = ToWindowsGuid(FNVENCDefs::PresetDefaultGuid());
-
-        NV_ENC_PRESET_CONFIG PresetConfig = {};
-        PresetConfig.version = NV_ENC_PRESET_CONFIG_VER;
-        PresetConfig.presetCfg.version = NV_ENC_CONFIG_VER;
-
-        NVENCSTATUS Status = GetPresetConfig(Encoder, CodecGuid, PresetGuid, &PresetConfig);
-        if (Status != NV_ENC_SUCCESS)
+        struct FPresetCandidate
         {
-            const FString StatusString = FNVENCDefs::StatusToString(Status);
-            UE_LOG(LogNVENCSession, Warning, TEXT("NvEncGetEncodePresetConfig failed for low-latency preset: %s"), *StatusString);
+            GUID Guid;
+            NV_ENC_TUNING_INFO Tuning = NV_ENC_TUNING_INFO_HIGH_QUALITY;
+            FString Description;
+        };
 
-            // Some GPUs (or driver versions) do not expose the low-latency preset. Retry with
-            // the default preset so encoding can still proceed instead of aborting entirely.
-            PresetConfig = {};
-            PresetConfig.version = NV_ENC_PRESET_CONFIG_VER;
-            PresetConfig.presetCfg.version = NV_ENC_CONFIG_VER;
+        TArray<FPresetCandidate> PresetCandidates;
+        PresetCandidates.Reserve(12);
 
-            NVENCSTATUS FallbackStatus = GetPresetConfig(Encoder, CodecGuid, FallbackPresetGuid, &PresetConfig);
-            if (FallbackStatus != NV_ENC_SUCCESS)
+        auto AddCandidate = [&PresetCandidates](const GUID& InGuid, NV_ENC_TUNING_INFO Tuning, const FString& Description)
+        {
+            for (const FPresetCandidate& Existing : PresetCandidates)
             {
-                UE_LOG(LogNVENCSession, Error, TEXT("NvEncGetEncodePresetConfig failed for default preset as well: %s"), *FNVENCDefs::StatusToString(FallbackStatus));
-                return false;
+                if (FMemory::Memcmp(&Existing.Guid, &InGuid, sizeof(GUID)) == 0)
+                {
+                    return;
+                }
             }
 
-            PresetGuid = FallbackPresetGuid;
-            UE_LOG(LogNVENCSession, Log, TEXT("Falling back to NVENC default preset after low-latency preset failure (%s)."), *StatusString);
+            FPresetCandidate Candidate;
+            Candidate.Guid = InGuid;
+            Candidate.Tuning = Tuning;
+            Candidate.Description = Description;
+            PresetCandidates.Add(Candidate);
+        };
+
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetLowLatencyGuid()), NV_ENC_TUNING_INFO_LOW_LATENCY, TEXT("NV_ENC_PRESET_LOW_LATENCY_HQ"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetDefaultGuid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_DEFAULT"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP1Guid()), NV_ENC_TUNING_INFO_LOW_LATENCY, TEXT("NV_ENC_PRESET_P1"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP2Guid()), NV_ENC_TUNING_INFO_LOW_LATENCY, TEXT("NV_ENC_PRESET_P2"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP3Guid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_P3"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP4Guid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_P4"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP5Guid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_P5"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP6Guid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_P6"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP7Guid()), NV_ENC_TUNING_INFO_LOSSLESS, TEXT("NV_ENC_PRESET_P7"));
+
+        if (GetPresetGUIDs)
+        {
+            uint32 AvailablePresetCount = 0;
+            NVENCSTATUS EnumStatus = GetPresetGUIDs(Encoder, CodecGuid, nullptr, 0, &AvailablePresetCount);
+            if (EnumStatus == NV_ENC_SUCCESS && AvailablePresetCount > 0)
+            {
+                TArray<GUID> RuntimePresets;
+                RuntimePresets.SetNumZeroed(AvailablePresetCount);
+
+                EnumStatus = GetPresetGUIDs(Encoder, CodecGuid, RuntimePresets.GetData(), AvailablePresetCount, &AvailablePresetCount);
+                if (EnumStatus == NV_ENC_SUCCESS)
+                {
+                    RuntimePresets.SetNum(AvailablePresetCount);
+                    for (const GUID& RuntimeGuid : RuntimePresets)
+                    {
+                        const FString FriendlyName = FNVENCDefs::PresetGuidToString(FromWindowsGuid(RuntimeGuid));
+                        AddCandidate(RuntimeGuid, NV_ENC_TUNING_INFO_HIGH_QUALITY, FriendlyName);
+                    }
+                }
+            }
+        }
+
+        NV_ENC_PRESET_CONFIG PresetConfig = {};
+        int32 SelectedPresetIndex = INDEX_NONE;
+        NVENCSTATUS LastPresetStatus = NV_ENC_SUCCESS;
+
+        for (int32 CandidateIndex = 0; CandidateIndex < PresetCandidates.Num(); ++CandidateIndex)
+        {
+            NV_ENC_PRESET_CONFIG AttemptConfig = {};
+            AttemptConfig.version = NV_ENC_PRESET_CONFIG_VER;
+            AttemptConfig.presetCfg.version = NV_ENC_CONFIG_VER;
+
+            LastPresetStatus = GetPresetConfig(Encoder, CodecGuid, PresetCandidates[CandidateIndex].Guid, &AttemptConfig);
+            if (LastPresetStatus == NV_ENC_SUCCESS)
+            {
+                PresetConfig = AttemptConfig;
+                SelectedPresetIndex = CandidateIndex;
+                break;
+            }
+
+            const FString PresetName = PresetCandidates[CandidateIndex].Description.IsEmpty()
+                ? FNVENCDefs::PresetGuidToString(FromWindowsGuid(PresetCandidates[CandidateIndex].Guid))
+                : PresetCandidates[CandidateIndex].Description;
+            UE_LOG(LogNVENCSession, Warning, TEXT("NvEncGetEncodePresetConfig failed for %s preset: %s"), *PresetName, *FNVENCDefs::StatusToString(LastPresetStatus));
+        }
+
+        if (SelectedPresetIndex == INDEX_NONE)
+        {
+            UE_LOG(LogNVENCSession, Error, TEXT("NvEncGetEncodePresetConfig failed for all attempted presets: %s"), *FNVENCDefs::StatusToString(LastPresetStatus));
+            return false;
+        }
+
+        const FPresetCandidate& SelectedPreset = PresetCandidates[SelectedPresetIndex];
+        const FString SelectedPresetName = SelectedPreset.Description.IsEmpty()
+            ? FNVENCDefs::PresetGuidToString(FromWindowsGuid(SelectedPreset.Guid))
+            : SelectedPreset.Description;
+
+        if (SelectedPresetIndex > 0)
+        {
+            UE_LOG(LogNVENCSession, Log, TEXT("Using fallback NVENC preset %s after trying %d options."), *SelectedPresetName, SelectedPresetIndex + 1);
         }
 
         EncodeConfig = PresetConfig.presetCfg;
@@ -264,8 +349,8 @@ namespace OmniNVENC
         InitializeParams = {};
         InitializeParams.version = NV_ENC_INITIALIZE_PARAMS_VER;
         InitializeParams.encodeGUID = CodecGuid;
-        InitializeParams.presetGUID = PresetGuid;
-        InitializeParams.tuningInfo = (PresetGuid == FallbackPresetGuid) ? NV_ENC_TUNING_INFO_HIGH_QUALITY : NV_ENC_TUNING_INFO_LOW_LATENCY;
+        InitializeParams.presetGUID = SelectedPreset.Guid;
+        InitializeParams.tuningInfo = SelectedPreset.Tuning;
         InitializeParams.encodeWidth = Parameters.Width;
         InitializeParams.encodeHeight = Parameters.Height;
         InitializeParams.darWidth = Parameters.Width;

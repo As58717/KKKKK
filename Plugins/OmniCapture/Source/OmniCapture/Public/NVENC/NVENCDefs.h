@@ -40,6 +40,14 @@ namespace OmniNVENC
         static const FGuid& CodecGuid(ENVENCCodec Codec);
         static const FGuid& PresetLowLatencyGuid();
         static const FGuid& PresetDefaultGuid();
+        static const FGuid& PresetP1Guid();
+        static const FGuid& PresetP2Guid();
+        static const FGuid& PresetP3Guid();
+        static const FGuid& PresetP4Guid();
+        static const FGuid& PresetP5Guid();
+        static const FGuid& PresetP6Guid();
+        static const FGuid& PresetP7Guid();
+        static FString PresetGuidToString(const FGuid& Guid);
         static const FGuid& TuningLatencyGuid();
         static const FGuid& TuningQualityGuid();
 
