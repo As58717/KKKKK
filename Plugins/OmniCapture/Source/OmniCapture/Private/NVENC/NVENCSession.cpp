@@ -144,6 +144,7 @@ namespace OmniNVENC
         }
 
         ApiVersion = NVENCAPI_VERSION;
+        FNVENCAPIVersion NegotiatedVersion = FNVENCDefs::DecodeApiVersion(ApiVersion);
 
         using TNvEncodeAPIGetMaxSupportedVersion = NVENCSTATUS(NVENCAPI*)(uint32_t*);
 
@@ -154,18 +155,29 @@ namespace OmniNVENC
             if (MaxVersionExport)
             {
                 TNvEncodeAPIGetMaxSupportedVersion GetMaxSupportedVersion = reinterpret_cast<TNvEncodeAPIGetMaxSupportedVersion>(MaxVersionExport);
-                uint32 RuntimeApiVersion = 0;
-                const NVENCSTATUS VersionStatus = GetMaxSupportedVersion ? GetMaxSupportedVersion(&RuntimeApiVersion) : NV_ENC_ERR_INVALID_PTR;
-                if (VersionStatus == NV_ENC_SUCCESS && RuntimeApiVersion != 0)
+                uint32 RuntimeApiVersionRaw = 0;
+                const NVENCSTATUS VersionStatus = GetMaxSupportedVersion ? GetMaxSupportedVersion(&RuntimeApiVersionRaw) : NV_ENC_ERR_INVALID_PTR;
+                if (VersionStatus == NV_ENC_SUCCESS && RuntimeApiVersionRaw != 0)
                 {
-                    if (RuntimeApiVersion < ApiVersion)
+                    const FNVENCAPIVersion RuntimeVersion = FNVENCDefs::DecodeRuntimeVersion(RuntimeApiVersionRaw);
+                    if (RuntimeVersion.Major != 0 || RuntimeVersion.Minor != 0)
                     {
-                        UE_LOG(LogNVENCSession, Log, TEXT("NVENC runtime API version 0x%08x is lower than compile-time version 0x%08x. Downgrading."), RuntimeApiVersion, ApiVersion);
-                        ApiVersion = RuntimeApiVersion;
-                    }
-                    else if (RuntimeApiVersion > ApiVersion)
-                    {
-                        UE_LOG(LogNVENCSession, Verbose, TEXT("NVENC runtime reports newer API version 0x%08x; using compile-time version 0x%08x."), RuntimeApiVersion, ApiVersion);
+                        if (FNVENCDefs::IsVersionOlder(RuntimeVersion, NegotiatedVersion))
+                        {
+                            UE_LOG(LogNVENCSession, Log,
+                                TEXT("NVENC runtime API version %s (0x%08x) is lower than compile-time version %s (0x%08x). Downgrading."),
+                                *FNVENCDefs::VersionToString(RuntimeVersion), RuntimeApiVersionRaw,
+                                *FNVENCDefs::VersionToString(NegotiatedVersion), ApiVersion);
+                            NegotiatedVersion = RuntimeVersion;
+                            ApiVersion = FNVENCDefs::EncodeApiVersion(NegotiatedVersion);
+                        }
+                        else if (FNVENCDefs::IsVersionOlder(NegotiatedVersion, RuntimeVersion))
+                        {
+                            UE_LOG(LogNVENCSession, Verbose,
+                                TEXT("NVENC runtime reports newer API version %s (0x%08x); using compile-time version %s (0x%08x)."),
+                                *FNVENCDefs::VersionToString(RuntimeVersion), RuntimeApiVersionRaw,
+                                *FNVENCDefs::VersionToString(NegotiatedVersion), ApiVersion);
+                        }
                     }
                 }
                 else if (VersionStatus != NV_ENC_SUCCESS)
@@ -179,10 +191,13 @@ namespace OmniNVENC
             }
         }
 
-        const uint32 MinimumSupportedVersion = FNVENCDefs::GetDefaultAPIVersion();
-        if (ApiVersion < MinimumSupportedVersion)
+        const FNVENCAPIVersion MinimumSupportedVersion = FNVENCDefs::GetMinimumAPIVersion();
+        if (FNVENCDefs::IsVersionOlder(NegotiatedVersion, MinimumSupportedVersion))
         {
-            UE_LOG(LogNVENCSession, Error, TEXT("NVENC runtime API version 0x%08x is below the minimum supported version 0x%08x."), ApiVersion, MinimumSupportedVersion);
+            UE_LOG(LogNVENCSession, Error,
+                TEXT("NVENC runtime API version %s (0x%08x) is below the minimum supported version %s (0x%08x)."),
+                *FNVENCDefs::VersionToString(NegotiatedVersion), FNVENCDefs::EncodeApiVersion(NegotiatedVersion),
+                *FNVENCDefs::VersionToString(MinimumSupportedVersion), FNVENCDefs::EncodeApiVersion(MinimumSupportedVersion));
             return false;
         }
 
