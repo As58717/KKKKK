@@ -202,6 +202,7 @@ namespace OmniNVENC
 
         GUID CodecGuid = ToWindowsGuid(FNVENCDefs::CodecGuid(Parameters.Codec));
         GUID PresetGuid = ToWindowsGuid(FNVENCDefs::PresetLowLatencyGuid());
+        GUID FallbackPresetGuid = ToWindowsGuid(FNVENCDefs::PresetDefaultGuid());
 
         NV_ENC_PRESET_CONFIG PresetConfig = {};
         PresetConfig.version = NV_ENC_PRESET_CONFIG_VER;
@@ -210,8 +211,24 @@ namespace OmniNVENC
         NVENCSTATUS Status = GetPresetConfig(Encoder, CodecGuid, PresetGuid, &PresetConfig);
         if (Status != NV_ENC_SUCCESS)
         {
-            UE_LOG(LogNVENCSession, Error, TEXT("NvEncGetEncodePresetConfig failed: %s"), *FNVENCDefs::StatusToString(Status));
-            return false;
+            const FString StatusString = FNVENCDefs::StatusToString(Status);
+            UE_LOG(LogNVENCSession, Warning, TEXT("NvEncGetEncodePresetConfig failed for low-latency preset: %s"), *StatusString);
+
+            // Some GPUs (or driver versions) do not expose the low-latency preset. Retry with
+            // the default preset so encoding can still proceed instead of aborting entirely.
+            PresetConfig = {};
+            PresetConfig.version = NV_ENC_PRESET_CONFIG_VER;
+            PresetConfig.presetCfg.version = NV_ENC_CONFIG_VER;
+
+            NVENCSTATUS FallbackStatus = GetPresetConfig(Encoder, CodecGuid, FallbackPresetGuid, &PresetConfig);
+            if (FallbackStatus != NV_ENC_SUCCESS)
+            {
+                UE_LOG(LogNVENCSession, Error, TEXT("NvEncGetEncodePresetConfig failed for default preset as well: %s"), *FNVENCDefs::StatusToString(FallbackStatus));
+                return false;
+            }
+
+            PresetGuid = FallbackPresetGuid;
+            UE_LOG(LogNVENCSession, Log, TEXT("Falling back to NVENC default preset after low-latency preset failure (%s)."), *StatusString);
         }
 
         EncodeConfig = PresetConfig.presetCfg;
@@ -248,7 +265,7 @@ namespace OmniNVENC
         InitializeParams.version = NV_ENC_INITIALIZE_PARAMS_VER;
         InitializeParams.encodeGUID = CodecGuid;
         InitializeParams.presetGUID = PresetGuid;
-        InitializeParams.tuningInfo = NV_ENC_TUNING_INFO_LOW_LATENCY;
+        InitializeParams.tuningInfo = (PresetGuid == FallbackPresetGuid) ? NV_ENC_TUNING_INFO_HIGH_QUALITY : NV_ENC_TUNING_INFO_LOW_LATENCY;
         InitializeParams.encodeWidth = Parameters.Width;
         InitializeParams.encodeHeight = Parameters.Height;
         InitializeParams.darWidth = Parameters.Width;
