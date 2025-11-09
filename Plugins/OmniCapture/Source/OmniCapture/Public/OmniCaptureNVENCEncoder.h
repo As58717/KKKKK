@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "OmniCaptureTypes.h"
 
+#include "NVENC/NVENCPlatform.h"
+
 #if PLATFORM_WINDOWS && WITH_OMNI_NVENC
     #define OMNI_WITH_NVENC 1
     #include "NVENC/NVENCAnnexB.h"

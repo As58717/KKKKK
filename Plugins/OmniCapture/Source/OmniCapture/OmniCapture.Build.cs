@@ -75,6 +75,10 @@ public class OmniCapture : ModuleRules
 
         PrivateDefinitions.Add($"WITH_OMNICAPTURE_OPENEXR={(bHasOpenEXR ? 1 : 0)}");
 
+        bool bSupportsNvenc = false;
+        bool bSupportsD3D11 = false;
+        bool bSupportsD3D12 = false;
+
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {
             PrivateDependencyModuleNames.AddRange(new string[]
@@ -139,6 +143,10 @@ public class OmniCapture : ModuleRules
 
             if (missingDependencies.Count == 0)
             {
+                bSupportsNvenc = true;
+                bSupportsD3D11 = true;
+                bSupportsD3D12 = true;
+
                 PublicIncludePaths.Add(interfaceDirectory);
                 PublicSystemIncludePaths.Add(interfaceDirectory);
 
@@ -167,8 +175,6 @@ public class OmniCapture : ModuleRules
                 "dxgi.lib"
             });
 
-            PrivateDefinitions.Add("WITH_OMNI_NVENC=1");
-
             // Ensure the expected project binaries directory exists before the linker writes outputs.
             if (Target.ProjectFile != null)
             {
@@ -179,10 +185,10 @@ public class OmniCapture : ModuleRules
                 }
             }
         }
-        else
-        {
-            PrivateDefinitions.Add("WITH_OMNI_NVENC=0");
-        }
+
+        PrivateDefinitions.Add($"WITH_OMNI_NVENC={(bSupportsNvenc ? 1 : 0)}");
+        PrivateDefinitions.Add($"OMNI_WITH_D3D11_RHI={(bSupportsD3D11 ? 1 : 0)}");
+        PrivateDefinitions.Add($"OMNI_WITH_D3D12_RHI={(bSupportsD3D12 ? 1 : 0)}");
     }
 
     private static void CollectThirdPartyModules(string thirdPartyDirectory, string filePrefix, HashSet<string> moduleNames)
