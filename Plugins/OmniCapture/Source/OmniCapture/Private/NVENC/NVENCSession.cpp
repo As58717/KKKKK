@@ -352,7 +352,30 @@ namespace OmniNVENC
 
             if (LastPresetStatus != NV_ENC_SUCCESS && GetPresetConfigEx)
             {
-                LastPresetStatus = GetPresetConfigEx(Encoder, CodecGuid, PresetCandidates[CandidateIndex].Guid, PresetCandidates[CandidateIndex].Tuning, &AttemptConfig);
+                TArray<NV_ENC_TUNING_INFO, TInlineAllocator<4>> TuningAttempts;
+                TuningAttempts.Add(PresetCandidates[CandidateIndex].Tuning);
+                auto AddUniqueTuning = [&TuningAttempts](NV_ENC_TUNING_INFO InTuning)
+                {
+                    if (!TuningAttempts.Contains(InTuning))
+                    {
+                        TuningAttempts.Add(InTuning);
+                    }
+                };
+
+                AddUniqueTuning(NV_ENC_TUNING_INFO_UNDEFINED);
+                AddUniqueTuning(NV_ENC_TUNING_INFO_HIGH_QUALITY);
+                AddUniqueTuning(NV_ENC_TUNING_INFO_LOW_LATENCY);
+                AddUniqueTuning(NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY);
+                AddUniqueTuning(NV_ENC_TUNING_INFO_LOSSLESS);
+
+                for (NV_ENC_TUNING_INFO TuningAttempt : TuningAttempts)
+                {
+                    LastPresetStatus = GetPresetConfigEx(Encoder, CodecGuid, PresetCandidates[CandidateIndex].Guid, TuningAttempt, &AttemptConfig);
+                    if (LastPresetStatus == NV_ENC_SUCCESS)
+                    {
+                        break;
+                    }
+                }
             }
             if (LastPresetStatus == NV_ENC_SUCCESS)
             {
