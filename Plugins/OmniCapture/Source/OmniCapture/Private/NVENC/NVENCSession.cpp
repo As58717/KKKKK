@@ -391,7 +391,10 @@ namespace OmniNVENC
             const FPresetCandidate& Candidate = PresetCandidates[CandidateIndex];
             LastPresetStatus = QueryPresetConfig(Encoder, Candidate, PresetConfig);
 
-            if (LastPresetStatus == NV_ENC_ERR_INVALID_PARAM && Encoder)
+            const bool bShouldRetryWithoutHandle =
+                (LastPresetStatus == NV_ENC_ERR_INVALID_PARAM || LastPresetStatus == NV_ENC_ERR_INVALID_ENCODERDEVICE) && Encoder;
+
+            if (bShouldRetryWithoutHandle)
             {
                 const FString PresetName = Candidate.Description.IsEmpty()
                     ? FNVENCDefs::PresetGuidToString(FromWindowsGuid(Candidate.Guid))
