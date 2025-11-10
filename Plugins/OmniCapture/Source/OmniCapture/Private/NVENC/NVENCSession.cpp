@@ -342,18 +342,18 @@ namespace OmniNVENC
         int32 SelectedPresetIndex = INDEX_NONE;
         NVENCSTATUS LastPresetStatus = NV_ENC_SUCCESS;
 
-        for (int32 CandidateIndex = 0; CandidateIndex < PresetCandidates.Num(); ++CandidateIndex)
+        auto QueryPresetConfig = [&](void* InEncoderHandle, const FPresetCandidate& Candidate, NV_ENC_PRESET_CONFIG& OutConfig)
         {
             NV_ENC_PRESET_CONFIG AttemptConfig = {};
             AttemptConfig.version = FNVENCDefs::PatchStructVersion(NV_ENC_PRESET_CONFIG_VER, ApiVersion);
             AttemptConfig.presetCfg.version = FNVENCDefs::PatchStructVersion(NV_ENC_CONFIG_VER, ApiVersion);
 
-            LastPresetStatus = GetPresetConfig(Encoder, CodecGuid, PresetCandidates[CandidateIndex].Guid, &AttemptConfig);
+            NVENCSTATUS Status = GetPresetConfig(InEncoderHandle, CodecGuid, Candidate.Guid, &AttemptConfig);
 
-            if (LastPresetStatus != NV_ENC_SUCCESS && GetPresetConfigEx)
+            if (Status != NV_ENC_SUCCESS && GetPresetConfigEx)
             {
                 TArray<NV_ENC_TUNING_INFO, TInlineAllocator<4>> TuningAttempts;
-                TuningAttempts.Add(PresetCandidates[CandidateIndex].Tuning);
+                TuningAttempts.Add(Candidate.Tuning);
                 auto AddUniqueTuning = [&TuningAttempts](NV_ENC_TUNING_INFO InTuning)
                 {
                     if (!TuningAttempts.Contains(InTuning))
@@ -370,23 +370,46 @@ namespace OmniNVENC
 
                 for (NV_ENC_TUNING_INFO TuningAttempt : TuningAttempts)
                 {
-                    LastPresetStatus = GetPresetConfigEx(Encoder, CodecGuid, PresetCandidates[CandidateIndex].Guid, TuningAttempt, &AttemptConfig);
-                    if (LastPresetStatus == NV_ENC_SUCCESS)
+                    Status = GetPresetConfigEx(InEncoderHandle, CodecGuid, Candidate.Guid, TuningAttempt, &AttemptConfig);
+                    if (Status == NV_ENC_SUCCESS)
                     {
                         break;
                     }
                 }
             }
+
+            if (Status == NV_ENC_SUCCESS)
+            {
+                OutConfig = AttemptConfig;
+            }
+
+            return Status;
+        };
+
+        for (int32 CandidateIndex = 0; CandidateIndex < PresetCandidates.Num(); ++CandidateIndex)
+        {
+            const FPresetCandidate& Candidate = PresetCandidates[CandidateIndex];
+            LastPresetStatus = QueryPresetConfig(Encoder, Candidate, PresetConfig);
+
+            if (LastPresetStatus == NV_ENC_ERR_INVALID_PARAM && Encoder)
+            {
+                const FString PresetName = Candidate.Description.IsEmpty()
+                    ? FNVENCDefs::PresetGuidToString(FromWindowsGuid(Candidate.Guid))
+                    : Candidate.Description;
+                UE_LOG(LogNVENCSession, Verbose, TEXT("Retrying NVENC preset %s query without encoder handle due to %s."), *PresetName, *FNVENCDefs::StatusToString(LastPresetStatus));
+
+                LastPresetStatus = QueryPresetConfig(nullptr, Candidate, PresetConfig);
+            }
+
             if (LastPresetStatus == NV_ENC_SUCCESS)
             {
-                PresetConfig = AttemptConfig;
                 SelectedPresetIndex = CandidateIndex;
                 break;
             }
 
-            const FString PresetName = PresetCandidates[CandidateIndex].Description.IsEmpty()
-                ? FNVENCDefs::PresetGuidToString(FromWindowsGuid(PresetCandidates[CandidateIndex].Guid))
-                : PresetCandidates[CandidateIndex].Description;
+            const FString PresetName = Candidate.Description.IsEmpty()
+                ? FNVENCDefs::PresetGuidToString(FromWindowsGuid(Candidate.Guid))
+                : Candidate.Description;
             UE_LOG(LogNVENCSession, Warning, TEXT("NvEncGetEncodePresetConfig failed for %s preset: %s"), *PresetName, *FNVENCDefs::StatusToString(LastPresetStatus));
         }
 
