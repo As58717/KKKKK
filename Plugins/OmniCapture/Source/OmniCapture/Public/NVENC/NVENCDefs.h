@@ -52,6 +52,8 @@ namespace OmniNVENC
         static const FGuid& PresetP5Guid();
         static const FGuid& PresetP6Guid();
         static const FGuid& PresetP7Guid();
+        static const FGuid& PresetHighPerformanceApproxGuid();
+        static const FGuid& PresetHighQualityApproxGuid();
         static const FGuid& PresetLowLatencyHighQualityGuid();
         static FString PresetGuidToString(const FGuid& Guid);
         static const FGuid& TuningLatencyGuid();

@@ -91,6 +91,18 @@ namespace OmniNVENC
         return GuidFromComponents(0x84848C12, 0x6F714C13, 0x931B53E2, 0x83F57974);
     }
 
+    const FGuid& FNVENCDefs::PresetHighPerformanceApproxGuid()
+    {
+        // Approx: map HP → P1 for legacy compatibility
+        return PresetP1Guid();
+    }
+
+    const FGuid& FNVENCDefs::PresetHighQualityApproxGuid()
+    {
+        // Approx: map HQ → P5 for legacy compatibility
+        return PresetP5Guid();
+    }
+
     const FGuid& FNVENCDefs::PresetLowLatencyHighQualityGuid()
     {
         // NV_ENC_PRESET_LOW_LATENCY_HQ_GUID {0xB3D9DC6F,0x9F9A,0x4FF2,{0xB2,0xEA,0xEF,0x0C,0xDE,0x24,0x82,0x5B}}
