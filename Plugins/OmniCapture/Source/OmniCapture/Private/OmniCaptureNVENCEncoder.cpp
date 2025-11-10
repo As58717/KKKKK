@@ -396,7 +396,8 @@ namespace
         FNVENCSession Session;
         if (!Session.Open(Codec, Device, NV_ENC_DEVICE_TYPE_DIRECTX))
         {
-            OutFailureReason = TEXT("Unable to open NVENC session for probe.");
+            const FString SessionError = Session.GetLastError();
+            OutFailureReason = SessionError.IsEmpty() ? TEXT("Unable to open NVENC session for probe.") : SessionError;
             return false;
         }
 
@@ -414,7 +415,8 @@ namespace
 
         if (!Session.Initialize(Parameters))
         {
-            OutFailureReason = TEXT("Failed to initialise NVENC session during probe.");
+            const FString SessionError = Session.GetLastError();
+            OutFailureReason = SessionError.IsEmpty() ? TEXT("Failed to initialise NVENC session during probe.") : SessionError;
             Session.Destroy();
             return false;
         }
@@ -520,6 +522,7 @@ namespace
         if (!TryCreateProbeSession(ENVENCCodec::H264, ENVENCBufferFormat::NV12, SessionFailure))
         {
             Result.SessionFailureReason = SessionFailure;
+            Result.HardwareFailureReason = Result.SessionFailureReason;
             UE_LOG(LogOmniCaptureNVENC, Warning, TEXT("NVENC probe could not open a session: %s"), *Result.SessionFailureReason);
             return Result;
         }
