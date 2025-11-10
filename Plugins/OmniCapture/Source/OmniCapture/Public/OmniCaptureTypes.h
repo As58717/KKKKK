@@ -118,6 +118,13 @@ UENUM(BlueprintType)
 enum class EOmniCaptureColorFormat : uint8 { NV12, P010, BGRA };
 
 UENUM(BlueprintType)
+enum class EOmniCaptureNVENCD3D12Interop : uint8
+{
+        Bridge UMETA(DisplayName = "D3D11-on-12 Bridge"),
+        Native UMETA(DisplayName = "Native D3D12")
+};
+
+UENUM(BlueprintType)
 enum class EOmniCaptureRateControlMode : uint8 { ConstantBitrate, VariableBitrate, Lossless };
 
 UENUM(BlueprintType)
@@ -249,9 +256,10 @@ struct OMNICAPTURE_API FOmniCaptureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, ClampMax = 1.0)) float SeamBlend = 0.25f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, ClampMax = 1.0)) float PolarDampening = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") FOmniCaptureQuality Quality;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureCodec Codec = EOmniCaptureCodec::HEVC;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureCodec Codec = EOmniCaptureCodec::HEVC;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureColorFormat NVENCColorFormat = EOmniCaptureColorFormat::NV12;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") bool bZeroCopy = true;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureNVENCD3D12Interop D3D12InteropMode = EOmniCaptureNVENCD3D12Interop::Bridge;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC", meta = (ClampMin = 0, UIMin = 0)) int32 RingBufferCapacity = 6;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureRingBufferPolicy RingBufferPolicy = EOmniCaptureRingBufferPolicy::DropOldest;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") FString NVENCRuntimeDirectory;

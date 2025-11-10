@@ -777,6 +777,7 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     ColorFormat = Settings.NVENCColorFormat;
     RequestedCodec = Settings.Codec;
     bZeroCopyRequested = Settings.bZeroCopy;
+    ActiveD3D12InteropMode = Settings.D3D12InteropMode;
 
 #if PLATFORM_WINDOWS && OMNI_WITH_NVENC
     ApplyRuntimeOverrides();
@@ -1110,29 +1111,57 @@ bool FOmniCaptureNVENCEncoder::EncodeFrameD3D12(const FOmniCaptureFrame& Frame)
         return false;
     }
 
+    OmniNVENC::ENVENCD3D12InteropMode DesiredMode = ActiveD3D12InteropMode == EOmniCaptureNVENCD3D12Interop::Native
+        ? OmniNVENC::ENVENCD3D12InteropMode::Native
+        : OmniNVENC::ENVENCD3D12InteropMode::Bridge;
+
+    if (D3D12Input.IsInitialised() && D3D12Input.GetInteropMode() != DesiredMode)
+    {
+        D3D12Input.Shutdown();
+    }
+
     if (!D3D12Input.IsInitialised())
     {
-        if (!D3D12Input.Initialise(Device12.GetReference()))
+        if (!D3D12Input.Initialise(Device12.GetReference(), DesiredMode))
         {
-            LastErrorMessage = TEXT("Failed to initialise NVENC D3D12 bridge.");
-            UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
-            return false;
+            if (DesiredMode == OmniNVENC::ENVENCD3D12InteropMode::Native)
+            {
+                UE_LOG(LogOmniCaptureNVENC, Warning, TEXT("Native D3D12 NVENC interop initialisation failed. Falling back to D3D11-on-12 bridge."));
+                ActiveD3D12InteropMode = EOmniCaptureNVENCD3D12Interop::Bridge;
+                DesiredMode = OmniNVENC::ENVENCD3D12InteropMode::Bridge;
+                if (!D3D12Input.Initialise(Device12.GetReference(), DesiredMode))
+                {
+                    LastErrorMessage = TEXT("Failed to initialise NVENC D3D12 interop.");
+                    UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
+                    return false;
+                }
+            }
+            else
+            {
+                LastErrorMessage = TEXT("Failed to initialise NVENC D3D12 interop.");
+                UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
+                return false;
+            }
         }
     }
 
-    ID3D11Device* BridgeDevice = D3D12Input.GetD3D11Device();
-    if (!BridgeDevice)
+    const bool bUsingBridge = D3D12Input.GetInteropMode() == OmniNVENC::ENVENCD3D12InteropMode::Bridge;
+    void* SessionDevice = bUsingBridge ? static_cast<void*>(D3D12Input.GetD3D11Device()) : static_cast<void*>(Device12.GetReference());
+
+    if (!SessionDevice)
     {
-        LastErrorMessage = TEXT("D3D11-on-12 bridge device is unavailable for NVENC capture.");
+        LastErrorMessage = bUsingBridge
+            ? TEXT("D3D11-on-12 bridge device is unavailable for NVENC capture.")
+            : TEXT("D3D12 device was unavailable for NVENC capture.");
         UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
         return false;
     }
 
     if (!EncoderSession.IsOpen())
     {
-        if (!EncoderSession.Open(ActiveParameters.Codec, BridgeDevice, NV_ENC_DEVICE_TYPE_DIRECTX))
+        if (!EncoderSession.Open(ActiveParameters.Codec, SessionDevice, NV_ENC_DEVICE_TYPE_DIRECTX))
         {
-            LastErrorMessage = TEXT("Failed to open NVENC session through D3D12 bridge.");
+            LastErrorMessage = TEXT("Failed to open NVENC session.");
             UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
             return false;
         }
@@ -1153,7 +1182,7 @@ bool FOmniCaptureNVENCEncoder::EncodeFrameD3D12(const FOmniCaptureFrame& Frame)
 
         if (!D3D12Input.BindSession(EncoderSession))
         {
-            LastErrorMessage = TEXT("Failed to bind NVENC session to D3D12 bridge.");
+            LastErrorMessage = TEXT("Failed to bind NVENC session to D3D12 interop.");
             UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
             return false;
         }
@@ -1163,13 +1192,16 @@ bool FOmniCaptureNVENCEncoder::EncodeFrameD3D12(const FOmniCaptureFrame& Frame)
             UE_LOG(LogOmniCaptureNVENC, Verbose, TEXT("NVENC did not provide Annex B headers before first D3D12 frame."));
         }
 
-        UE_LOG(LogOmniCaptureNVENC, Log, TEXT("NVENC session initialised via D3D12 bridge (%dx%d)."), ActiveParameters.Width, ActiveParameters.Height);
+        UE_LOG(LogOmniCaptureNVENC, Log, TEXT("NVENC session initialised via %s (%dx%d)."),
+            bUsingBridge ? TEXT("D3D11-on-12 bridge") : TEXT("native D3D12"),
+            ActiveParameters.Width,
+            ActiveParameters.Height);
     }
     else
     {
         if (!D3D12Input.IsSessionBound() && !D3D12Input.BindSession(EncoderSession))
         {
-            LastErrorMessage = TEXT("Failed to rebind NVENC session to D3D12 bridge.");
+            LastErrorMessage = TEXT("Failed to rebind NVENC session to D3D12 interop.");
             UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
             return false;
         }
@@ -1195,10 +1227,25 @@ bool FOmniCaptureNVENCEncoder::EncodeFrameD3D12(const FOmniCaptureFrame& Frame)
         return false;
     }
 
+    NV_ENC_INPUT_RESOURCE_D3D12 InputDescriptor = {};
+    NV_ENC_INPUT_PTR SubmissionBuffer = MappedInput;
+    if (!bUsingBridge)
+    {
+        if (!D3D12Input.BuildInputDescriptor(MappedInput, InputDescriptor))
+        {
+            LastErrorMessage = TEXT("Failed to prepare D3D12 input descriptor for NVENC.");
+            UE_LOG(LogOmniCaptureNVENC, Error, TEXT("%s"), *LastErrorMessage);
+            D3D12Input.UnmapResource(MappedInput);
+            return false;
+        }
+
+        SubmissionBuffer = reinterpret_cast<NV_ENC_INPUT_PTR>(&InputDescriptor);
+    }
+
     NV_ENC_PIC_PARAMS PicParams = {};
     PicParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_PIC_PARAMS_VER, EncoderSession.GetApiVersion());
     PicParams.pictureStruct = NV_ENC_PIC_STRUCT_FRAME;
-    PicParams.inputBuffer = MappedInput;
+    PicParams.inputBuffer = SubmissionBuffer;
     PicParams.bufferFmt = EncoderSession.GetNVBufferFormat();
     PicParams.inputWidth = ActiveParameters.Width;
     PicParams.inputHeight = ActiveParameters.Height;
