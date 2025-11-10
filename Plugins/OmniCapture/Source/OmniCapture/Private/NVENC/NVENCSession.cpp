@@ -327,13 +327,13 @@ namespace OmniNVENC
 
         AddCandidate(ToWindowsGuid(FNVENCDefs::PresetLowLatencyHighQualityGuid()), NV_ENC_TUNING_INFO_LOW_LATENCY, TEXT("NV_ENC_PRESET_LOW_LATENCY_HQ"));
         AddCandidate(ToWindowsGuid(FNVENCDefs::PresetDefaultGuid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_DEFAULT"));
-        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetHighPerformanceGuid()), NV_ENC_TUNING_INFO_LOW_LATENCY, TEXT("NV_ENC_PRESET_HP"));
-        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetLowLatencyHighPerformanceGuid()), NV_ENC_TUNING_INFO_LOW_LATENCY, TEXT("NV_ENC_PRESET_LOW_LATENCY_HP"));
-        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetLowLatencyDefaultGuid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_LOW_LATENCY_DEFAULT"));
-        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetLosslessHighPerformanceGuid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_LOSSLESS_HP"));
-        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetHighQualityGuid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_HQ"));
-        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetLosslessDefaultGuid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_LOSSLESS_DEFAULT"));
-        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetBestQualityGuid()), NV_ENC_TUNING_INFO_LOSSLESS, TEXT("NV_ENC_PRESET_BEST_QUALITY"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP1Guid()), NV_ENC_TUNING_INFO_LOW_LATENCY, TEXT("NV_ENC_PRESET_P1"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP2Guid()), NV_ENC_TUNING_INFO_LOW_LATENCY, TEXT("NV_ENC_PRESET_P2"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP3Guid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_P3"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP4Guid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_P4"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP5Guid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_P5"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP6Guid()), NV_ENC_TUNING_INFO_HIGH_QUALITY, TEXT("NV_ENC_PRESET_P6"));
+        AddCandidate(ToWindowsGuid(FNVENCDefs::PresetP7Guid()), NV_ENC_TUNING_INFO_LOSSLESS, TEXT("NV_ENC_PRESET_P7"));
 
         if (GetPresetGUIDs)
         {
