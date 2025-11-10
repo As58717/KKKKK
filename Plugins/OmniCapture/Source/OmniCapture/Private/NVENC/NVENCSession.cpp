@@ -64,6 +64,54 @@ namespace OmniNVENC
             return FGuid(InGuid.Data1, B, C, D);
         }
 
+        FString GuidToDebugString(const GUID& InGuid)
+        {
+            return FromWindowsGuid(InGuid).ToString(EGuidFormats::DigitsWithHyphensInBraces);
+        }
+
+        FString ProfileGuidToString(const GUID& InGuid)
+        {
+            if (FMemory::Memcmp(&InGuid, &NV_ENC_H264_PROFILE_BASELINE_GUID, sizeof(GUID)) == 0)
+            {
+                return TEXT("NV_ENC_H264_PROFILE_BASELINE");
+            }
+            if (FMemory::Memcmp(&InGuid, &NV_ENC_H264_PROFILE_MAIN_GUID, sizeof(GUID)) == 0)
+            {
+                return TEXT("NV_ENC_H264_PROFILE_MAIN");
+            }
+            if (FMemory::Memcmp(&InGuid, &NV_ENC_H264_PROFILE_HIGH_GUID, sizeof(GUID)) == 0)
+            {
+                return TEXT("NV_ENC_H264_PROFILE_HIGH");
+            }
+            if (FMemory::Memcmp(&InGuid, &NV_ENC_H264_PROFILE_HIGH_444_GUID, sizeof(GUID)) == 0)
+            {
+                return TEXT("NV_ENC_H264_PROFILE_HIGH_444");
+            }
+            if (FMemory::Memcmp(&InGuid, &NV_ENC_HEVC_PROFILE_MAIN_GUID, sizeof(GUID)) == 0)
+            {
+                return TEXT("NV_ENC_HEVC_PROFILE_MAIN");
+            }
+            if (FMemory::Memcmp(&InGuid, &NV_ENC_HEVC_PROFILE_MAIN10_GUID, sizeof(GUID)) == 0)
+            {
+                return TEXT("NV_ENC_HEVC_PROFILE_MAIN10");
+            }
+            if (FMemory::Memcmp(&InGuid, &NV_ENC_HEVC_PROFILE_FREXT_GUID, sizeof(GUID)) == 0)
+            {
+                return TEXT("NV_ENC_HEVC_PROFILE_FREXT");
+            }
+            return GuidToDebugString(InGuid);
+        }
+
+        FString LevelToString(uint32 Level)
+        {
+            if (Level == NV_ENC_LEVEL_AUTOSELECT)
+            {
+                return TEXT("NV_ENC_LEVEL_AUTOSELECT");
+            }
+
+            return FString::Printf(TEXT("0x%02x"), Level);
+        }
+
         NV_ENC_BUFFER_FORMAT ToNVFormat(ENVENCBufferFormat Format)
         {
             switch (Format)
@@ -517,8 +565,40 @@ namespace OmniNVENC
         Status = InitializeEncoder(Encoder, &InitializeParams);
         if (Status != NV_ENC_SUCCESS)
         {
-            UE_LOG(LogNVENCSession, Error, TEXT("NvEncInitializeEncoder failed: %s"), *FNVENCDefs::StatusToString(Status));
-            LastErrorMessage = FString::Printf(TEXT("NvEncInitializeEncoder failed: %s"), *FNVENCDefs::StatusToString(Status));
+            const FString StatusString = FNVENCDefs::StatusToString(Status);
+            const FString CodecString = FNVENCDefs::CodecToString(Parameters.Codec);
+            const FString PresetString = SelectedPresetName;
+            const FString ProfileString = ProfileGuidToString(EncodeConfig.profileGUID);
+            const uint32 LevelValue = Parameters.Codec == ENVENCCodec::H264
+                ? EncodeConfig.encodeCodecConfig.h264Config.level
+                : EncodeConfig.encodeCodecConfig.hevcConfig.level;
+            const FString LevelString = LevelToString(LevelValue);
+            const FNVENCAPIVersion RuntimeVersion = FNVENCDefs::DecodeApiVersion(ApiVersion);
+            const FNVENCAPIVersion BuildVersion = FNVENCDefs::DecodeApiVersion(NVENCAPI_VERSION);
+
+            UE_LOG(LogNVENCSession, Error,
+                TEXT("NvEncInitializeEncoder failed: %s (Codec=%s, Preset=%s, Profile=%s, Level=%s, API runtime=%s (0x%08x), API build=%s (0x%08x))"),
+                *StatusString,
+                *CodecString,
+                *PresetString,
+                *ProfileString,
+                *LevelString,
+                *FNVENCDefs::VersionToString(RuntimeVersion),
+                ApiVersion,
+                *FNVENCDefs::VersionToString(BuildVersion),
+                NVENCAPI_VERSION);
+
+            LastErrorMessage = FString::Printf(
+                TEXT("NvEncInitializeEncoder failed: %s (Codec=%s, Preset=%s, Profile=%s, Level=%s, API runtime=%s (0x%08x), API build=%s (0x%08x))"),
+                *StatusString,
+                *CodecString,
+                *PresetString,
+                *ProfileString,
+                *LevelString,
+                *FNVENCDefs::VersionToString(RuntimeVersion),
+                ApiVersion,
+                *FNVENCDefs::VersionToString(BuildVersion),
+                NVENCAPI_VERSION);
             return false;
         }
 
