@@ -49,6 +49,7 @@ namespace OmniNVENC
         const NV_ENC_CONFIG& GetEncodeConfig() const { return EncodeConfig; }
         NV_ENC_BUFFER_FORMAT GetNVBufferFormat() const { return NvBufferFormat; }
         uint32 GetApiVersion() const { return ApiVersion; }
+        const FString& GetLastError() const { return LastErrorMessage; }
 
     private:
         bool bIsOpen = false;
@@ -62,6 +63,7 @@ namespace OmniNVENC
         NV_ENC_CONFIG EncodeConfig = {};
         NV_ENC_BUFFER_FORMAT NvBufferFormat = NV_ENC_BUFFER_FORMAT_UNDEFINED;
         uint32 ApiVersion = NVENCAPI_VERSION;
+        FString LastErrorMessage;
     };
 }
 

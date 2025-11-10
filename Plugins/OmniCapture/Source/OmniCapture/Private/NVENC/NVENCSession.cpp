@@ -121,8 +121,10 @@ namespace OmniNVENC
 
     bool FNVENCSession::Open(ENVENCCodec Codec, void* InDevice, NV_ENC_DEVICE_TYPE InDeviceType)
     {
+        LastErrorMessage.Reset();
 #if !PLATFORM_WINDOWS
         UE_LOG(LogNVENCSession, Warning, TEXT("NVENC session is only available on Windows builds."));
+        LastErrorMessage = TEXT("NVENC session is only available on Windows builds.");
         return false;
 #else
         if (bIsOpen)
@@ -133,6 +135,7 @@ namespace OmniNVENC
         if (!InDevice)
         {
             UE_LOG(LogNVENCSession, Error, TEXT("Failed to open NVENC session – no encoder device was provided."));
+            LastErrorMessage = TEXT("Failed to open NVENC session – no encoder device was provided.");
             return false;
         }
 
@@ -140,6 +143,7 @@ namespace OmniNVENC
         if (!Loader.Load())
         {
             UE_LOG(LogNVENCSession, Warning, TEXT("Failed to open NVENC session for codec %s – runtime is unavailable."), *FNVENCDefs::CodecToString(Codec));
+            LastErrorMessage = TEXT("Failed to open NVENC session – NVENC runtime is unavailable.");
             return false;
         }
 
@@ -198,6 +202,7 @@ namespace OmniNVENC
                 TEXT("NVENC runtime API version %s (0x%08x) is below the minimum supported version %s (0x%08x)."),
                 *FNVENCDefs::VersionToString(NegotiatedVersion), FNVENCDefs::EncodeApiVersion(NegotiatedVersion),
                 *FNVENCDefs::VersionToString(MinimumSupportedVersion), FNVENCDefs::EncodeApiVersion(MinimumSupportedVersion));
+            LastErrorMessage = TEXT("NVENC runtime API version is below the minimum supported version.");
             return false;
         }
 
@@ -207,6 +212,7 @@ namespace OmniNVENC
 
         if (!ValidateFunction("NvEncodeAPICreateInstance", CreateInstance))
         {
+            LastErrorMessage = TEXT("Required NVENC export 'NvEncodeAPICreateInstance' is missing.");
             return false;
         }
 
@@ -217,6 +223,7 @@ namespace OmniNVENC
         if (Status != NV_ENC_SUCCESS)
         {
             UE_LOG(LogNVENCSession, Error, TEXT("NvEncodeAPICreateInstance failed: %s"), *FNVENCDefs::StatusToString(Status));
+            LastErrorMessage = FString::Printf(TEXT("NvEncodeAPICreateInstance failed: %s"), *FNVENCDefs::StatusToString(Status));
             return false;
         }
 
@@ -225,6 +232,7 @@ namespace OmniNVENC
 
         if (!ValidateFunction("NvEncOpenEncodeSessionEx", OpenSession))
         {
+            LastErrorMessage = TEXT("Required NVENC export 'NvEncOpenEncodeSessionEx' is missing.");
             return false;
         }
 
@@ -239,6 +247,7 @@ namespace OmniNVENC
         {
             UE_LOG(LogNVENCSession, Error, TEXT("NvEncOpenEncodeSessionEx failed: %s"), *FNVENCDefs::StatusToString(Status));
             Encoder = nullptr;
+            LastErrorMessage = FString::Printf(TEXT("NvEncOpenEncodeSessionEx failed: %s"), *FNVENCDefs::StatusToString(Status));
             return false;
         }
 
@@ -246,19 +255,23 @@ namespace OmniNVENC
         DeviceType = InDeviceType;
         CurrentParameters.Codec = Codec;
         bIsOpen = true;
+        LastErrorMessage.Reset();
         return true;
 #endif
     }
 
     bool FNVENCSession::Initialize(const FNVENCParameters& Parameters)
     {
+        LastErrorMessage.Reset();
 #if !PLATFORM_WINDOWS
         UE_LOG(LogNVENCSession, Warning, TEXT("Cannot initialise NVENC session on this platform."));
+        LastErrorMessage = TEXT("Cannot initialise NVENC session on this platform.");
         return false;
 #else
         if (!bIsOpen || !Encoder)
         {
             UE_LOG(LogNVENCSession, Warning, TEXT("Cannot initialise NVENC session – encoder is not open."));
+            LastErrorMessage = TEXT("Cannot initialise NVENC session – encoder is not open.");
             return false;
         }
 
@@ -273,8 +286,14 @@ namespace OmniNVENC
         TNvEncGetEncodePresetGUIDs GetPresetGUIDs = reinterpret_cast<TNvEncGetEncodePresetGUIDs>(FunctionList.nvEncGetEncodePresetGUIDs);
         NVENCSTATUS Status = NV_ENC_SUCCESS;
 
-        if (!ValidateFunction("NvEncGetEncodePresetConfig", GetPresetConfig) || !ValidateFunction("NvEncInitializeEncoder", InitializeEncoder))
+        if (!ValidateFunction("NvEncGetEncodePresetConfig", GetPresetConfig))
         {
+            LastErrorMessage = TEXT("Required NVENC export 'NvEncGetEncodePresetConfig' is missing.");
+            return false;
+        }
+        if (!ValidateFunction("NvEncInitializeEncoder", InitializeEncoder))
+        {
+            LastErrorMessage = TEXT("Required NVENC export 'NvEncInitializeEncoder' is missing.");
             return false;
         }
 
@@ -414,11 +433,25 @@ namespace OmniNVENC
                 ? FNVENCDefs::PresetGuidToString(FromWindowsGuid(Candidate.Guid))
                 : Candidate.Description;
             UE_LOG(LogNVENCSession, Warning, TEXT("NvEncGetEncodePresetConfig failed for %s preset: %s"), *PresetName, *FNVENCDefs::StatusToString(LastPresetStatus));
+
+            if (LastPresetStatus == NV_ENC_ERR_INVALID_ENCODERDEVICE)
+            {
+                break;
+            }
         }
 
         if (SelectedPresetIndex == INDEX_NONE)
         {
             UE_LOG(LogNVENCSession, Error, TEXT("NvEncGetEncodePresetConfig failed for all attempted presets: %s"), *FNVENCDefs::StatusToString(LastPresetStatus));
+            const FString StatusString = FNVENCDefs::StatusToString(LastPresetStatus);
+            if (LastPresetStatus == NV_ENC_ERR_INVALID_ENCODERDEVICE)
+            {
+                LastErrorMessage = FString::Printf(TEXT("NVENC runtime rejected the provided DirectX device (NV_ENC_ERR_INVALID_ENCODERDEVICE). Ensure that a supported NVIDIA GPU and recent drivers are installed. (%s)"), *StatusString);
+            }
+            else
+            {
+                LastErrorMessage = FString::Printf(TEXT("NvEncGetEncodePresetConfig failed for all attempted presets: %s"), *StatusString);
+            }
             return false;
         }
 
@@ -485,6 +518,7 @@ namespace OmniNVENC
         if (Status != NV_ENC_SUCCESS)
         {
             UE_LOG(LogNVENCSession, Error, TEXT("NvEncInitializeEncoder failed: %s"), *FNVENCDefs::StatusToString(Status));
+            LastErrorMessage = FString::Printf(TEXT("NvEncInitializeEncoder failed: %s"), *FNVENCDefs::StatusToString(Status));
             return false;
         }
 
@@ -497,12 +531,15 @@ namespace OmniNVENC
 
     bool FNVENCSession::Reconfigure(const FNVENCParameters& Parameters)
     {
+        LastErrorMessage.Reset();
 #if !PLATFORM_WINDOWS
+        LastErrorMessage = TEXT("Cannot reconfigure NVENC session on this platform.");
         return false;
 #else
         if (!bIsInitialised)
         {
             UE_LOG(LogNVENCSession, Warning, TEXT("Cannot reconfigure NVENC session – encoder has not been initialised."));
+            LastErrorMessage = TEXT("Cannot reconfigure NVENC session – encoder has not been initialised.");
             return false;
         }
 
@@ -511,6 +548,7 @@ namespace OmniNVENC
         TNvEncReconfigureEncoder ReconfigureEncoder = FunctionList.nvEncReconfigureEncoder;
         if (!ValidateFunction("NvEncReconfigureEncoder", ReconfigureEncoder))
         {
+            LastErrorMessage = TEXT("Required NVENC export 'NvEncReconfigureEncoder' is missing.");
             return false;
         }
 
@@ -543,6 +581,7 @@ namespace OmniNVENC
         if (Status != NV_ENC_SUCCESS)
         {
             UE_LOG(LogNVENCSession, Error, TEXT("NvEncReconfigureEncoder failed: %s"), *FNVENCDefs::StatusToString(Status));
+            LastErrorMessage = FString::Printf(TEXT("NvEncReconfigureEncoder failed: %s"), *FNVENCDefs::StatusToString(Status));
             return false;
         }
 
