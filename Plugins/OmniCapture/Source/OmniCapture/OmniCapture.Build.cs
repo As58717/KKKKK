@@ -196,7 +196,7 @@ public class OmniCapture : ModuleRules
             }
         }
 
-        PrivateDefinitions.Add($"WITH_OMNI_NVENC={(bSupportsNvenc ? 1 : 0)}");
+        PrivateDefinitions.Add("WITH_OMNI_NVENC=1");
         PrivateDefinitions.Add($"OMNI_WITH_D3D11_RHI={(bSupportsD3D11 ? 1 : 0)}");
         PrivateDefinitions.Add($"OMNI_WITH_D3D12_RHI={(bSupportsD3D12 ? 1 : 0)}");
     }
