@@ -317,6 +317,10 @@ bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, cons
         Root->SetStringField(TEXT("nvencBitstream"), VideoPath);
     }
     Root->SetBoolField(TEXT("zeroCopy"), Settings.bZeroCopy);
+    if (const UEnum* InteropEnum = StaticEnum<EOmniCaptureNVENCD3D12Interop>())
+    {
+        Root->SetStringField(TEXT("d3d12Interop"), InteropEnum->GetNameStringByValue(static_cast<int64>(Settings.D3D12InteropMode)));
+    }
     Root->SetStringField(TEXT("codec"), Settings.Codec == EOmniCaptureCodec::HEVC ? TEXT("HEVC") : TEXT("H264"));
 
     switch (Settings.NVENCColorFormat)

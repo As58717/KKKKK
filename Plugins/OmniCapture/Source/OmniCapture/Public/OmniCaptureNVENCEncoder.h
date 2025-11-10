@@ -75,6 +75,7 @@ private:
     EOmniCaptureColorFormat ColorFormat = EOmniCaptureColorFormat::NV12;
     bool bZeroCopyRequested = true;
     EOmniCaptureCodec RequestedCodec = EOmniCaptureCodec::HEVC;
+    EOmniCaptureNVENCD3D12Interop ActiveD3D12InteropMode = EOmniCaptureNVENCD3D12Interop::Bridge;
     FString LastErrorMessage;
 
 #if OMNI_WITH_NVENC
