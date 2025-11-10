@@ -32,6 +32,15 @@ namespace OmniNVENC
             }
             return true;
         }
+
+        NV_ENC_INPUT_RESOURCE_TYPE GetDirectX12ResourceType()
+        {
+#if defined(NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX12)
+            return NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX12;
+#else
+            return static_cast<NV_ENC_INPUT_RESOURCE_TYPE>(0x4);
+#endif
+        }
     }
 
     FNVENCInputD3D12::FNVENCInputD3D12() = default;
@@ -125,7 +134,7 @@ namespace OmniNVENC
             return false;
         }
 
-        HANDLE EventHandle = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        HANDLE EventHandle = ::CreateEvent(nullptr, false, false, nullptr);
         if (!EventHandle)
         {
             UE_LOG(LogNVENCInputD3D12, Error, TEXT("Failed to create fence event for NVENC interop (0x%08x)."), ::GetLastError());
@@ -565,7 +574,7 @@ namespace OmniNVENC
 
         NV_ENC_REGISTER_RESOURCE RegisterParams = {};
         RegisterParams.version = FNVENCDefs::PatchStructVersion(NV_ENC_REGISTER_RESOURCE_VER, ApiVersion);
-        RegisterParams.resourceType = NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX12;
+        RegisterParams.resourceType = GetDirectX12ResourceType();
         RegisterParams.resourceToRegister = InResource;
         RegisterParams.width = static_cast<uint32>(Desc.Width);
         RegisterParams.height = Desc.Height;
