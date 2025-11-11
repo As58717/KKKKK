@@ -458,19 +458,6 @@ namespace OmniNVENC
             const FPresetCandidate& Candidate = PresetCandidates[CandidateIndex];
             LastPresetStatus = QueryPresetConfig(Encoder, Candidate, PresetConfig);
 
-            const bool bShouldRetryWithoutHandle =
-                (LastPresetStatus == NV_ENC_ERR_INVALID_PARAM || LastPresetStatus == NV_ENC_ERR_INVALID_ENCODERDEVICE) && Encoder;
-
-            if (bShouldRetryWithoutHandle)
-            {
-                const FString PresetName = Candidate.Description.IsEmpty()
-                    ? FNVENCDefs::PresetGuidToString(FromWindowsGuid(Candidate.Guid))
-                    : Candidate.Description;
-                UE_LOG(LogNVENCSession, Verbose, TEXT("Retrying NVENC preset %s query without encoder handle due to %s."), *PresetName, *FNVENCDefs::StatusToString(LastPresetStatus));
-
-                LastPresetStatus = QueryPresetConfig(nullptr, Candidate, PresetConfig);
-            }
-
             if (LastPresetStatus == NV_ENC_SUCCESS)
             {
                 SelectedPresetIndex = CandidateIndex;

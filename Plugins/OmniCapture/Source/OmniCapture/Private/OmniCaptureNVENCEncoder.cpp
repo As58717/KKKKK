@@ -780,7 +780,7 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     ColorFormat = Settings.NVENCColorFormat;
     RequestedCodec = Settings.Codec;
     bZeroCopyRequested = Settings.bZeroCopy;
-    ActiveD3D12InteropMode = Settings.D3D12InteropMode;
+    ActiveD3D12InteropMode = EOmniCaptureNVENCD3D12Interop::Bridge;
 
 #if PLATFORM_WINDOWS && OMNI_WITH_NVENC
     ApplyRuntimeOverrides();
