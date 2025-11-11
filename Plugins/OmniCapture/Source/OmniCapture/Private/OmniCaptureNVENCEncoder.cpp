@@ -336,7 +336,54 @@ namespace
             D3D_FEATURE_LEVEL_10_1,
             D3D_FEATURE_LEVEL_10_0
         };
-        HRESULT Hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, Flags, FeatureLevels, UE_ARRAY_COUNT(FeatureLevels), D3D11_SDK_VERSION, LocalDevice.GetInitReference(), nullptr, LocalContext.GetInitReference());
+        TRefCountPtr<IDXGIFactory1> DxgiFactory;
+        HRESULT Hr = CreateDXGIFactory1(IID_PPV_ARGS(DxgiFactory.GetInitReference()));
+        if (FAILED(Hr))
+        {
+            OutFailureReason = FString::Printf(TEXT("Failed to create DXGI factory for NVENC probe (0x%08x)."), Hr);
+            return false;
+        }
+
+        TRefCountPtr<IDXGIAdapter1> NvidiaAdapter;
+        for (UINT AdapterIndex = 0;; ++AdapterIndex)
+        {
+            TRefCountPtr<IDXGIAdapter1> Adapter;
+            Hr = DxgiFactory->EnumAdapters1(AdapterIndex, Adapter.GetInitReference());
+
+            if (Hr == DXGI_ERROR_NOT_FOUND)
+            {
+                break;
+            }
+
+            if (FAILED(Hr))
+            {
+                OutFailureReason = FString::Printf(TEXT("Failed to enumerate DXGI adapters for NVENC probe (0x%08x)."), Hr);
+                return false;
+            }
+
+            DXGI_ADAPTER_DESC1 AdapterDesc;
+            Hr = Adapter->GetDesc1(&AdapterDesc);
+            if (FAILED(Hr))
+            {
+                OutFailureReason = FString::Printf(TEXT("Failed to query DXGI adapter description for NVENC probe (0x%08x)."), Hr);
+                return false;
+            }
+
+            const FString AdapterDescription(AdapterDesc.Description);
+            if (AdapterDescription.Contains(TEXT("NVIDIA")))
+            {
+                NvidiaAdapter = Adapter;
+                break;
+            }
+        }
+
+        if (!NvidiaAdapter)
+        {
+            OutFailureReason = TEXT("未找到 NVIDIA GPU");
+            return false;
+        }
+
+        Hr = D3D11CreateDevice(NvidiaAdapter.GetReference(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, Flags, FeatureLevels, UE_ARRAY_COUNT(FeatureLevels), D3D11_SDK_VERSION, LocalDevice.GetInitReference(), nullptr, LocalContext.GetInitReference());
         if (FAILED(Hr))
         {
             OutFailureReason = FString::Printf(TEXT("Failed to create probing D3D11 device (0x%08x)."), Hr);
