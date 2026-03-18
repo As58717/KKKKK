@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>地铁跑酷原型</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hud">
+        <div>
+          <p class="label">分数</p>
+          <strong id="score">0</strong>
+        </div>
+        <div>
+          <p class="label">最高分</p>
+          <strong id="best">0</strong>
+        </div>
+        <div>
+          <p class="label">速度</p>
+          <strong><span id="speed">1.0</span>x</strong>
+        </div>
+      </header>
+
+      <main class="game-card">
+        <section class="game-stage">
+          <canvas id="game" width="900" height="540" aria-label="地铁跑酷原型画布"></canvas>
+          <div class="overlay" id="overlay">
+            <h1>地铁跑酷原型</h1>
+            <p>按 <kbd>A</kbd>/<kbd>D</kbd> 或 <kbd>←</kbd>/<kbd>→</kbd> 切换赛道。</p>
+            <p>按 <kbd>W</kbd>/<kbd>↑</kbd>/<kbd>空格</kbd> 跳跃，按 <kbd>S</kbd>/<kbd>↓</kbd> 下滑。</p>
+            <p>支持移动端触摸：左右半屏切道，上滑跳跃，下滑下滑。</p>
+            <button id="startButton" type="button">开始游戏</button>
+          </div>
+        </section>
+
+        <aside class="side-panel">
+          <section>
+            <h2>玩法目标</h2>
+            <p>在三条轨道间移动，躲避路障和列车，尽量存活更久并收集金币。</p>
+          </section>
+          <section>
+            <h2>原型特性</h2>
+            <ul>
+              <li>三轨无尽奔跑</li>
+              <li>跳跃 / 下滑 / 切换轨道</li>
+              <li>随机障碍、列车和金币</li>
+              <li>速度递增与本地最高分</li>
+            </ul>
+          </section>
+          <section>
+            <h2>使用方式</h2>
+            <p>直接用谷歌浏览器打开当前文件夹中的 <code>index.html</code> 即可运行，无需安装依赖。</p>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
