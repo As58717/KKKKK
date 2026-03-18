@@ -1,0 +1,178 @@
+:root {
+  color-scheme: dark;
+  --bg: #07111f;
+  --card: rgba(8, 18, 34, 0.82);
+  --line: rgba(255, 255, 255, 0.12);
+  --accent: #4fd1c5;
+  --accent-2: #f6ad55;
+  --danger: #fc8181;
+  --text: #edf2f7;
+  --muted: #a0aec0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(79, 209, 197, 0.2), transparent 35%),
+    linear-gradient(180deg, #08111f 0%, #030711 100%);
+  color: var(--text);
+}
+
+.shell {
+  width: min(1200px, calc(100% - 32px));
+  margin: 24px auto;
+}
+
+.hud,
+.game-card,
+.side-panel section,
+.overlay {
+  backdrop-filter: blur(18px);
+}
+
+.hud {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--card);
+}
+
+.label {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.hud strong {
+  font-size: 1.6rem;
+}
+
+.game-card {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr);
+  gap: 18px;
+}
+
+.game-stage {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: rgba(1, 8, 18, 0.9);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 5 / 3;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(6, 14, 24, 0.7), rgba(6, 14, 24, 0.92));
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+.overlay h1,
+.side-panel h2 {
+  margin: 0;
+}
+
+.overlay p,
+.side-panel p,
+.side-panel li {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+kbd,
+code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+button {
+  justify-self: center;
+  margin-top: 8px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), #63b3ed);
+  color: #06111b;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 10px 30px rgba(79, 209, 197, 0.35);
+}
+
+button:hover {
+  transform: translateY(-1px) scale(1.01);
+}
+
+.side-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.side-panel section {
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.side-panel ul {
+  margin: 12px 0 0;
+  padding-left: 20px;
+}
+
+@media (max-width: 980px) {
+  .game-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100% - 20px, 1200px);
+    margin: 12px auto 20px;
+  }
+
+  .hud {
+    grid-template-columns: repeat(3, 1fr);
+    padding: 14px;
+  }
+
+  .hud strong {
+    font-size: 1.2rem;
+  }
+
+  .overlay {
+    padding: 20px;
+  }
+}
